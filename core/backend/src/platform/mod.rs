@@ -1,4 +1,5 @@
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CameraDevice {
     pub id: String,
     pub name: String,
