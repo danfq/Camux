@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+unicode-width = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -12,3 +13,6 @@ objc2-av-foundation = { version = "0.3", features = [
   "AVCaptureDevice",
   "AVMediaFormat",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+v4l = "0.14"
