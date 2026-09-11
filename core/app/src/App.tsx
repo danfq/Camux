@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { getDevices } from "./core/backend";
 import type { CameraDevice } from "./core/backend";
@@ -42,13 +44,40 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+
+    // Let React commit the settled camera state and let the browser paint it before
+    // revealing the native window. This prevents a blank or intermediate loading
+    // frame from flashing at startup.
+    let cancelled = false;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (!cancelled && isTauri()) {
+          void getCurrentWindow().show();
+        }
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [loading]);
+
   return (
     <main>
       <h1>Camux</h1>
       <p>A lightweight, cross-platform webcam splitter.</p>
 
-      <button disabled={loading} onClick={() => void refreshDevices()}>
-        {loading ? "Finding cameras…" : "Refresh cameras"}
+      <button
+        aria-busy={loading}
+        disabled={loading}
+        onClick={() => void refreshDevices()}
+      >
+        Refresh cameras
       </button>
 
       {error && <p role="alert">Could not load cameras: {error}</p>}

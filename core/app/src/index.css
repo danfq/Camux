@@ -3,17 +3,31 @@
   color-scheme: light dark;
 }
 
+html,
 body {
+  width: 100%;
+  height: 100%;
   margin: 0;
+}
+
+body {
   min-width: 320px;
-  min-height: 100vh;
+  background: Canvas;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
 }
 
 main {
+  box-sizing: border-box;
   display: grid;
   gap: 1rem;
-  min-height: 100vh;
-  place-content: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 2rem;
+  place-content: safe center;
   text-align: center;
 }
 
@@ -28,6 +42,7 @@ button {
 ul {
   display: grid;
   gap: 0.75rem;
+  width: min(30rem, calc(100vw - 4rem));
   margin: 0;
   padding: 0;
   list-style: none;
@@ -44,4 +59,5 @@ li {
 
 small {
   opacity: 0.7;
+  overflow-wrap: anywhere;
 }

@@ -12,7 +12,9 @@
   "app": {
     "windows": [
       {
+        "create": false,
         "title": "Camux",
+        "visible": false,
         "width": 800,
         "height": 600
       }
