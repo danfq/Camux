@@ -5,6 +5,13 @@ export interface CameraDevice {
   name: string;
 }
 
+/** Reveal the native window after React has committed the styled application shell. */
+export function showMainWindow(): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+
+  return invoke("show_main_window");
+}
+
 /** Get all camera devices through the native Rust backend. */
 export function getDevices(): Promise<CameraDevice[]> {
   if (!isTauri()) {

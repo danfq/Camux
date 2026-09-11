@@ -3,5 +3,14 @@
   "identifier": "default",
   "description": "Default permissions for the Camux window",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-show"]
+  "permissions": [
+    "core:default",
+    "core:webview:deny-internal-toggle-devtools",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "os:default"
+  ]
 }

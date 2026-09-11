@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Camera, CameraOff, CircleAlert, RefreshCw } from "lucide-react";
+import { WindowTitlebar } from "tauri-controls";
 
-import { getDevices } from "./core/backend";
+import { version as appVersion } from "../package.json";
+import { getDevices, showMainWindow } from "./core/backend";
 import type { CameraDevice } from "./core/backend";
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
 
+    void showMainWindow();
     void getDevices()
       .then((nextDevices) => {
         if (active) setDevices(nextDevices);
@@ -44,56 +46,90 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (loading) return;
-
-    // Let React commit the settled camera state and let the browser paint it before
-    // revealing the native window. This prevents a blank or intermediate loading
-    // frame from flashing at startup.
-    let cancelled = false;
-    let secondFrame = 0;
-    const firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(() => {
-        if (!cancelled && isTauri()) {
-          void getCurrentWindow().show();
-        }
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(firstFrame);
-      cancelAnimationFrame(secondFrame);
-    };
-  }, [loading]);
+  const cameraCount = devices.length;
+  const cameraLabel = `${cameraCount} ${cameraCount === 1 ? "camera" : "cameras"}`;
 
   return (
-    <main>
-      <h1>Camux</h1>
-      <p>A lightweight, cross-platform webcam splitter.</p>
+    <div className="app-shell">
+      <WindowTitlebar className="window-titlebar">
+        <div className="window-titlebar-content" data-tauri-drag-region>
+          <span data-tauri-drag-region>Camux v{appVersion}</span>
+        </div>
+      </WindowTitlebar>
 
-      <button
-        aria-busy={loading}
-        disabled={loading}
-        onClick={() => void refreshDevices()}
-      >
-        Refresh cameras
-      </button>
+      <main>
+        <div className="page-heading">
+          <div>
+            <h1>Cameras</h1>
+            <p>Sources available on this computer</p>
+          </div>
+          <button className="refresh-button" aria-busy={loading} disabled={loading} onClick={() => void refreshDevices()}>
+            <RefreshCw className={loading ? "spinning" : undefined} aria-hidden="true" />
+            {loading ? "Scanning" : "Refresh"}
+          </button>
+        </div>
 
-      {error && <p role="alert">Could not load cameras: {error}</p>}
+        <section className="device-section" aria-labelledby="device-heading">
+          <header className="section-heading">
+            <h2 id="device-heading">Devices</h2>
+            <span>{cameraLabel}</span>
+          </header>
 
-      {!loading && !error && devices.length === 0 && <p>No cameras found.</p>}
+          <div className="device-content" aria-live="polite">
+            {loading && (
+              <div className="message">
+                <span className="spinner" />
+                <div>
+                  <strong>Scanning for cameras</strong>
+                  <p>Connected devices will appear here.</p>
+                </div>
+              </div>
+            )}
 
-      {devices.length > 0 && (
-        <ul aria-label="Camera devices">
-          {devices.map((device) => (
-            <li key={device.id}>
-              <strong>{device.name}</strong>
-              <small>{device.id}</small>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+            {!loading && error && (
+              <div className="message message-error" role="alert">
+                <CircleAlert className="message-icon error-icon" aria-hidden="true" />
+                <div>
+                  <strong>Could not scan for cameras</strong>
+                  <p>{error}</p>
+                </div>
+              </div>
+            )}
+
+            {!loading && !error && cameraCount === 0 && (
+              <div className="message">
+                <span className="device-icon muted">
+                  <CameraOff aria-hidden="true" />
+                </span>
+                <div>
+                  <strong>No cameras found</strong>
+                  <p>Connect a camera and refresh the list.</p>
+                </div>
+              </div>
+            )}
+
+            {!loading && !error && cameraCount > 0 && (
+              <ul className="device-list" aria-label="Camera devices">
+                {devices.map((device) => (
+                  <li key={device.id}>
+                    <span className="device-icon">
+                      <Camera aria-hidden="true" />
+                    </span>
+                    <span className="device-details">
+                      <strong>{device.name}</strong>
+                      <small>{device.id}</small>
+                    </span>
+                    <span className="available">
+                      <i />
+                      Available
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }

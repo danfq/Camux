@@ -60,6 +60,10 @@ impl CameraBackend for LinuxBackend {
             let name = non_empty_trimmed(&capabilities.card)
                 .unwrap_or_else(|| path_file_name(&path).unwrap_or_else(|| path_string.clone()));
 
+            if is_virtual_camera(&capabilities.driver, &name, &capabilities.bus) {
+                continue;
+            }
+
             devices.push(DiscoveredDevice {
                 camera: CameraDevice {
                     id: path_string,
@@ -105,6 +109,26 @@ fn identity_part(value: &str) -> String {
         .to_lowercase()
 }
 
+fn is_virtual_camera(driver: &str, name: &str, bus: &str) -> bool {
+    let driver = identity_part(driver);
+    let name = identity_part(name);
+    let bus = identity_part(bus);
+
+    [
+        "v4l2loopback",
+        "v4l2 loopback",
+        "akvcam",
+        "vivid",
+        "vimc",
+        "vicodec",
+    ]
+    .iter()
+    .any(|virtual_driver| driver.contains(virtual_driver))
+        || bus.contains("v4l2loopback")
+        || name.contains("virtual camera")
+        || name.contains("virtual webcam")
+}
+
 fn structure_devices(mut devices: Vec<DiscoveredDevice>) -> Vec<CameraDevice> {
     devices.sort_by_key(|device| device.index);
 
@@ -115,8 +139,8 @@ fn structure_devices(mut devices: Vec<DiscoveredDevice>) -> Vec<CameraDevice> {
         // bus_info identifies the physical connection, while card identifies
         // a capture endpoint on that connection (for example RGB versus IR)
         //
-        // do not guess when drivers omit bus_info; distinct virtual cameras
-        // commonly have identical names
+        // do not guess when drivers omit bus_info; distinct capture devices
+        // can have identical names
         bus.is_empty() || seen.insert((bus, identity_part(&device.camera.name)))
     });
 
@@ -164,6 +188,22 @@ mod tests {
     }
 
     #[test]
+    fn rejects_virtual_camera_drivers_and_names() {
+        assert!(is_virtual_camera(
+            "v4l2 loopback",
+            "OBS Virtual Camera",
+            "platform:v4l2loopback-000"
+        ));
+        assert!(is_virtual_camera("akvcam", "Camera", "platform:akvcam"));
+        assert!(is_virtual_camera("uvcvideo", "Virtual Webcam", "usb-1"));
+        assert!(!is_virtual_camera(
+            "uvcvideo",
+            "EMEET SmartCam C60E 4K",
+            "usb-0000:00:14.0-2"
+        ));
+    }
+
+    #[test]
     fn deduplicates_same_endpoint_and_keeps_lowest_numbered_node() {
         let devices = structure_devices(vec![
             discovered(10, "USB Camera", "usb-1"),
@@ -177,10 +217,10 @@ mod tests {
     }
 
     #[test]
-    fn does_not_deduplicate_devices_without_bus_information() {
+    fn preserves_distinct_devices_without_bus_information() {
         let devices = structure_devices(vec![
-            discovered(0, "Virtual Camera", ""),
-            discovered(1, "Virtual Camera", ""),
+            discovered(0, "Capture Device", ""),
+            discovered(1, "Capture Device", ""),
         ]);
 
         assert_eq!(devices.len(), 2);

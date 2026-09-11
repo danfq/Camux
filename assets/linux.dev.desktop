@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Camux (Development)
+Exec=camux
+Icon=dev.danfq.camux
+StartupWMClass=dev.danfq.camux
+Terminal=false
+NoDisplay=true

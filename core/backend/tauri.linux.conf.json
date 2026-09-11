@@ -1,5 +1,14 @@
 {
   "bundle": {
-    "targets": ["deb", "rpm"]
+    "icon": ["../../assets/macos_icon_fallback.png"],
+    "targets": ["deb", "rpm"],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "../../assets/linux.desktop.hbs"
+      },
+      "rpm": {
+        "desktopTemplate": "../../assets/linux.desktop.hbs"
+      }
+    }
   }
 }

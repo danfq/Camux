@@ -13,6 +13,7 @@ tauri-build = { version = "2.6", features = [] }
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2.11", features = [] }
+tauri-plugin-os = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -23,4 +24,5 @@ objc2-av-foundation = { version = "0.3", features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
 v4l = "0.14"

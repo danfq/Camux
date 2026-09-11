@@ -7,7 +7,12 @@ default:
 # Run the desktop app in development mode.
 [working-directory("core/backend")]
 run *args:
+    sh ../../scripts/install-dev-icon.sh
     ../app/node_modules/.bin/tauri dev -- {{ args }}
+
+# Remove the Linux desktop entry used for development window icons.
+remove-dev-icon:
+    sh scripts/install-dev-icon.sh --remove
 
 # Build the desktop application.
 [working-directory("core/backend")]
