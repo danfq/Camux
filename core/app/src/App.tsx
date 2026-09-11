@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Camera, CameraOff, CircleAlert, LoaderCircle, RefreshCw, Settings } from "lucide-react";
+import { CameraOff, CircleAlert, LoaderCircle, RefreshCw, Settings } from "lucide-react";
 import { WindowTitlebar } from "tauri-controls";
 
 import { version as appVersion } from "../package.json";
@@ -8,6 +8,8 @@ import { getDevices, showMainWindow } from "./core/backend";
 import type { CameraDevice } from "./core/backend";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { CameraItem } from "./components/custom/camera";
+import { WindowResizeHandles } from "./components/custom/window-resize-handles";
 
 export default function App() {
   const [devices, setDevices] = useState<CameraDevice[]>([]);
@@ -54,6 +56,8 @@ export default function App() {
 
   return (
     <div className="grid h-full w-full grid-rows-[40px_minmax(0,1fr)] bg-background text-foreground">
+      <WindowResizeHandles />
+
       <WindowTitlebar className="relative z-10 h-10 border-b bg-card/80 text-card-foreground backdrop-blur">
         <div className="flex h-full min-w-0 flex-1 items-center justify-between px-3" data-tauri-drag-region>
           <div className="flex min-w-0 items-center gap-2" data-tauri-drag-region>
@@ -131,22 +135,7 @@ export default function App() {
             {!loading && !error && cameraCount > 0 && (
               <ul className="divide-y" aria-label="Camera devices">
                 {devices.map((device) => (
-                  <li
-                    key={device.id}
-                    className="grid min-h-16 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50"
-                  >
-                    <span className="grid size-10 place-items-center rounded-lg bg-muted text-muted-foreground">
-                      <Camera className="size-5" aria-hidden="true" />
-                    </span>
-                    <span className="min-w-0">
-                      <strong className="block truncate text-sm font-medium">{device.name}</strong>
-                      <small className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">{device.id}</small>
-                    </span>
-                    <Badge variant="secondary" className="gap-1.5 text-[11px] font-normal text-muted-foreground">
-                      <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                      Available
-                    </Badge>
-                  </li>
+                  <CameraItem key={device.id} device={device} />
                 ))}
               </ul>
             )}

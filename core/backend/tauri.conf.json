@@ -17,6 +17,7 @@
         "title": "Camux",
         "backgroundColor": "#111317",
         "decorations": false,
+        "resizable": true,
         "devtools": false,
         "visible": false,
         "width": 800,
