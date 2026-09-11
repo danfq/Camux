@@ -37,6 +37,53 @@ fn reveal_when_loaded(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn configure_macos_webview(
+    window: &tauri::WebviewWindow,
+) -> Result<(), Box<dyn std::error::Error>> {
+    window.with_webview(|webview| unsafe {
+        use objc2_app_kit::{NSAutoresizingMaskOptions, NSColor, NSView, NSWindow};
+
+        let ns_window = &*webview.ns_window().cast::<NSWindow>();
+        let webview = &*webview.inner().cast::<NSView>();
+
+        // Wry installs the WKWebView inside an intermediate NSView. Keep both
+        // views tied to their superview bounds so AppKit resizes them throughout
+        // the native title-bar zoom animation instead of after it completes.
+        if let Some(container) = webview.superview() {
+            container.setAutoresizesSubviews(true);
+            container.setAutoresizingMask(
+                NSAutoresizingMaskOptions::ViewWidthSizable
+                    | NSAutoresizingMaskOptions::ViewHeightSizable,
+            );
+            webview.setFrame(container.bounds());
+        }
+        webview.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable
+                | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
+
+        // Match the native backing view to the web content so even an in-flight
+        // resize cannot expose AppKit's default light background.
+        let background = NSColor::colorWithSRGBRed_green_blue_alpha(
+            17.0 / 255.0,
+            19.0 / 255.0,
+            23.0 / 255.0,
+            1.0,
+        );
+        ns_window.setBackgroundColor(Some(&background));
+    })?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn configure_macos_webview(
+    _window: &tauri::WebviewWindow,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
+
 #[tauri::command]
 fn get_devices() -> Result<Vec<CameraDevice>, String> {
     PlatformBackend::new().devices()
@@ -81,11 +128,7 @@ pub fn run() {
                 .build()?;
 
             reveal_when_loaded(&window, content_loaded)?;
-
-            // In addition to AppKit's autoresizing mask, keep the webview bounds in sync
-            // on every native resize event. This avoids a stale viewport during macOS's
-            // title-bar zoom animation.
-            window.as_ref().set_auto_resize(true)?;
+            configure_macos_webview(&window)?;
 
             Ok(())
         })
