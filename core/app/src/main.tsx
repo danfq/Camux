@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import "./global.css";
 import App from "./App.tsx";
 
+document.documentElement.classList.add("dark");
+
 const preventDefault = (event: Event) => event.preventDefault();
 
 for (const eventName of ["auxclick", "contextmenu", "dragover", "dragstart", "drop", "selectstart"]) {
