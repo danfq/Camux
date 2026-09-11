@@ -1,4 +1,4 @@
-@layer tauri-controls, theme, base, components, utilities;
+@layer theme, base, components, utilities;
 
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -157,6 +157,144 @@ body,
     overflow: hidden;
     overscroll-behavior: none;
     touch-action: none;
+}
+
+.window-titlebar {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    height: 40px;
+    flex: none;
+    align-items: stretch;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklch, var(--card) 80%, transparent);
+    color: var(--card-foreground);
+    backdrop-filter: blur(8px);
+}
+
+.window-titlebar__content {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+}
+
+.window-controls {
+    display: flex;
+    flex: none;
+    align-items: center;
+}
+
+.window-control {
+    display: grid;
+    flex: none;
+    place-items: center;
+    border: 0;
+    border-radius: 0;
+    color: var(--foreground);
+    background: transparent;
+    cursor: default;
+    padding: 0;
+    outline-offset: -2px;
+}
+
+.window-control svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: square;
+    stroke-width: 1.2;
+}
+
+.window-titlebar--macos .window-controls {
+    gap: 8px;
+    padding: 0 13px;
+}
+
+.window-titlebar--macos .window-control {
+    width: 12px;
+    height: 12px;
+    border: 0.5px solid rgb(0 0 0 / 18%);
+    border-radius: 50%;
+}
+
+.window-titlebar--macos .window-control--close {
+    background: #ff5f57;
+}
+
+.window-titlebar--macos .window-control--minimize {
+    background: #febc2e;
+}
+
+.window-titlebar--macos .window-control--maximize {
+    background: #28c840;
+}
+
+.window-titlebar--macos .window-control svg {
+    width: 8px;
+    height: 8px;
+    color: rgb(0 0 0 / 55%);
+    opacity: 0;
+    stroke-width: 2;
+}
+
+.window-titlebar--macos .window-controls:hover .window-control svg,
+.window-titlebar--macos .window-control:focus-visible svg {
+    opacity: 1;
+}
+
+.window-titlebar--macos.window-titlebar--unfocused .window-control {
+    border-color: rgb(0 0 0 / 12%);
+    background: #8e8e93;
+}
+
+.window-titlebar--windows .window-control {
+    width: 46px;
+    height: 40px;
+}
+
+.window-titlebar--windows .window-control:hover {
+    background: rgb(255 255 255 / 7%);
+}
+
+.window-titlebar--windows .window-control:active {
+    background: rgb(255 255 255 / 4%);
+}
+
+.window-titlebar--windows .window-control--close:hover {
+    color: white;
+    background: #c42b1c;
+}
+
+.window-titlebar--windows .window-control--close:active {
+    background: #b83b2e;
+}
+
+.window-titlebar--linux .window-controls {
+    gap: 8px;
+    padding: 0 10px;
+}
+
+.window-titlebar--linux .window-control {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.window-titlebar--linux .window-control:hover {
+    background: color-mix(in oklch, var(--foreground) 21%, transparent);
+}
+
+.window-titlebar--linux .window-control:active {
+    background: color-mix(in oklch, var(--foreground) 28%, transparent);
+}
+
+.window-titlebar--linux .window-control svg {
+    width: 10px;
+    height: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {

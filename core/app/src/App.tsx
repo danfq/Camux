@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { CameraOff, CircleAlert, LoaderCircle, RefreshCw, Settings } from "lucide-react";
-import { WindowTitlebar } from "tauri-controls";
-
 import { version as appVersion } from "../package.json";
 import { Badge } from "./components/ui/badge";
 import { getDevices, showMainWindow } from "./core/backend";
@@ -10,6 +8,7 @@ import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { CameraItem } from "./components/custom/camera";
 import { WindowResizeHandles } from "./components/custom/window-resize-handles";
+import { WindowTitlebar } from "./components/custom/window-titlebar";
 
 export default function App() {
   const [devices, setDevices] = useState<CameraDevice[]>([]);
@@ -58,7 +57,7 @@ export default function App() {
     <div className="grid h-full w-full grid-rows-[40px_minmax(0,1fr)] bg-background text-foreground">
       <WindowResizeHandles />
 
-      <WindowTitlebar className="relative z-10 h-10 border-b bg-card/80 text-card-foreground backdrop-blur">
+      <WindowTitlebar>
         <div className="flex h-full min-w-0 flex-1 items-center justify-between px-3" data-tauri-drag-region>
           <div className="flex min-w-0 items-center gap-2" data-tauri-drag-region>
             <span className="truncate text-sm font-semibold" data-tauri-drag-region>

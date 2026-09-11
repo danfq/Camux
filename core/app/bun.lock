@@ -19,7 +19,6 @@
         "shadcn": "^4.21.0",
         "tailwind-merge": "^1.14.0",
         "tailwindcss": "^4.3.3",
-        "tauri-controls": "^0.4.0",
         "tw-animate-css": "^1.4.0",
       },
       "devDependencies": {
@@ -33,9 +32,6 @@
         "vite": "^8.2.2",
       },
     },
-  },
-  "patchedDependencies": {
-    "tauri-controls@0.4.0": "patches/tauri-controls@0.4.0.patch",
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -899,8 +895,6 @@
     "tailwindcss": ["tailwindcss@4.3.3", "", {}, "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ=="],
 
     "tapable": ["tapable@2.3.3", "", {}, "sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A=="],
-
-    "tauri-controls": ["tauri-controls@0.4.0", "", { "peerDependencies": { "clsx": "^2.0.0", "react": "^18.2.0", "react-dom": "^18.2.0", "tailwind-merge": "^1.14.0" } }, "sha512-M+by1V9wO6GPHL7/MXb2weAaUc0T6JzDhcuTvQF92x3kGsmfkj37F/HXHeslgQwLVLOaIBxwzTFmwsVWVH8o0g=="],
 
     "tiny-invariant": ["tiny-invariant@1.3.3", "", {}, "sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg=="],
 
