@@ -84,6 +84,28 @@ fn configure_macos_webview(
     Ok(())
 }
 
+#[cfg(all(debug_assertions, target_os = "macos"))]
+fn restore_macos_bundled_icon() {
+    let is_app_bundle = std::env::current_exe().is_ok_and(|executable| {
+        executable
+            .ancestors()
+            .any(|path| path.extension().is_some_and(|extension| extension == "app"))
+    });
+    if !is_app_bundle {
+        return;
+    }
+
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    // Tauri assigns its PNG fallback during the Ready event in development.
+    // Clearing that override restores the adaptive icon from the dev bundle's
+    // CFBundleIconName and Assets.car.
+    let mtm = unsafe { MainThreadMarker::new_unchecked() };
+    let application = NSApplication::sharedApplication(mtm);
+    unsafe { application.setApplicationIconImage(None) };
+}
+
 #[tauri::command]
 fn get_devices() -> Result<Vec<CameraDevice>, String> {
     PlatformBackend::new().devices()
@@ -106,33 +128,38 @@ fn show_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_os::init())
-        .setup(|app| {
-            let window_config = app
-                .config()
-                .app
-                .windows
-                .first()
-                .cloned()
-                .ok_or_else(|| std::io::Error::other("missing main window configuration"))?;
+    let app =
+        tauri::Builder::default()
+            .plugin(tauri_plugin_os::init())
+            .setup(|app| {
+                let window_config =
+                    app.config().app.windows.first().cloned().ok_or_else(|| {
+                        std::io::Error::other("missing main window configuration")
+                    })?;
 
-            let content_loaded = Arc::new(AtomicBool::new(false));
-            let load_signal = Arc::clone(&content_loaded);
-            let window = tauri::WebviewWindowBuilder::from_config(app, &window_config)?
-                .on_page_load(move |_window, payload| {
-                    if payload.event() == PageLoadEvent::Finished {
-                        load_signal.store(true, Ordering::Release);
-                    }
-                })
-                .build()?;
+                let content_loaded = Arc::new(AtomicBool::new(false));
+                let load_signal = Arc::clone(&content_loaded);
+                let window = tauri::WebviewWindowBuilder::from_config(app, &window_config)?
+                    .on_page_load(move |_window, payload| {
+                        if payload.event() == PageLoadEvent::Finished {
+                            load_signal.store(true, Ordering::Release);
+                        }
+                    })
+                    .build()?;
 
-            reveal_when_loaded(&window, content_loaded)?;
-            configure_macos_webview(&window)?;
+                reveal_when_loaded(&window, content_loaded)?;
+                configure_macos_webview(&window)?;
 
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![get_devices, show_main_window])
-        .run(tauri::generate_context!())
-        .expect("failed to run Camux");
+                Ok(())
+            })
+            .invoke_handler(tauri::generate_handler![get_devices, show_main_window])
+            .build(tauri::generate_context!())
+            .expect("failed to run Camux");
+
+    app.run(|_app_handle, _event| {
+        #[cfg(all(debug_assertions, target_os = "macos"))]
+        if matches!(_event, tauri::RunEvent::Ready) {
+            restore_macos_bundled_icon();
+        }
+    });
 }

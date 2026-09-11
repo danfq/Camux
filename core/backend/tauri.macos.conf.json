@@ -1,8 +1,12 @@
 {
+  "build": {
+    "runner": "../../scripts/run-macos-dev-app.zsh"
+  },
   "bundle": {
     "icon": [
-      "../../assets/macos_icon_fallback.png",
-      "../../assets/macos_icon.icon"
+      "target/macos-icon/Assets.car",
+      "../../assets/macos_icon.icon",
+      "../../assets/macos_icon_fallback.png"
     ]
   }
 }

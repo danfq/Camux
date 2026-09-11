@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.danfq.camux",
   "build": {
-    "beforeDevCommand": "bun run --cwd app dev",
+    "beforeDevCommand": "sh ../scripts/compile-macos-icon.sh && bun run --cwd app dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run --cwd app build",
+    "beforeBuildCommand": "bun run --cwd app build && sh ../scripts/compile-macos-icon.sh",
     "frontendDist": "../app/dist"
   },
   "app": {
