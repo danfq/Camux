@@ -2,10 +2,16 @@ mod platform;
 
 use platform::{CameraBackend, CameraDevice, PlatformBackend};
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 use tauri::webview::PageLoadEvent;
+
+#[cfg(target_os = "macos")]
+static RESTORED_WINDOW_FRAME: Mutex<Option<[f64; 4]>> = Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+static WINDOW_FRAME_ANIMATION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "linux")]
 fn reveal_when_loaded(
@@ -46,6 +52,11 @@ fn configure_macos_webview(
 
         let ns_window = &*webview.ns_window().cast::<NSWindow>();
         let webview = &*webview.inner().cast::<NSView>();
+
+        // WKWebView redraws its own backing layers as its viewport changes. The
+        // default AppKit live-resize optimization instead preserves the previous
+        // frame, which leaves the old-sized UI visible until resizing settles.
+        ns_window.setPreservesContentDuringLiveResize(false);
 
         // Wry installs the WKWebView inside an intermediate NSView. Keep both
         // views tied to their superview bounds so AppKit resizes them throughout
@@ -126,6 +137,173 @@ fn show_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn animate_macos_window_frame(
+    window: tauri::WebviewWindow,
+    from: [f64; 4],
+    to: [f64; 4],
+    duration_seconds: f64,
+) {
+    use std::time::{Duration, Instant};
+
+    // Updating the actual frame at display cadence makes AppKit resize the
+    // WKWebView on every step. NSWindow's built-in animated setFrame instead
+    // animates a cached surface and only gives WKWebView the final viewport.
+    const FRAMES_PER_SECOND: f64 = 60.0;
+    let step_count = (duration_seconds * FRAMES_PER_SECOND).ceil().max(1.0) as u32;
+    let duration = Duration::from_secs_f64(duration_seconds);
+
+    std::thread::spawn(move || {
+        let started = Instant::now();
+
+        for step in 1..=step_count {
+            let deadline = started + duration.mul_f64(step as f64 / step_count as f64);
+            std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+
+            let progress = step as f64 / step_count as f64;
+            let eased = 0.5 - (std::f64::consts::PI * progress).cos() / 2.0;
+            let frame = [
+                from[0] + (to[0] - from[0]) * eased,
+                from[1] + (to[1] - from[1]) * eased,
+                from[2] + (to[2] - from[2]) * eased,
+                from[3] + (to[3] - from[3]) * eased,
+            ];
+            let final_step = step == step_count;
+
+            if window
+                .with_webview(move |webview| unsafe {
+                    use objc2_app_kit::{NSView, NSWindow};
+                    use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+                    let ns_window = &*webview.ns_window().cast::<NSWindow>();
+                    let webview = &*webview.inner().cast::<NSView>();
+                    let frame = NSRect::new(
+                        NSPoint::new(frame[0], frame[1]),
+                        NSSize::new(frame[2], frame[3]),
+                    );
+
+                    ns_window.setFrame_display(frame, true);
+
+                    // Keep Wry's intermediate container and WKWebView locked to
+                    // their current bounds before the next animation step.
+                    if let Some(container) = webview.superview() {
+                        if let Some(parent) = container.superview() {
+                            container.setFrame(parent.bounds());
+                        }
+                        webview.setFrame(container.bounds());
+                        container.layoutSubtreeIfNeeded();
+                    }
+                    webview.setNeedsDisplay(true);
+                    ns_window.displayIfNeeded();
+
+                    if final_step {
+                        WINDOW_FRAME_ANIMATION_ACTIVE.store(false, Ordering::Release);
+                    }
+                })
+                .is_err()
+            {
+                WINDOW_FRAME_ANIMATION_ACTIVE.store(false, Ordering::Release);
+                return;
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn toggle_maximize_realtime(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if WINDOW_FRAME_ANIMATION_ACTIVE.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+
+        let animation_window = window.clone();
+        if let Err(error) = window.with_webview(move |webview| unsafe {
+            use objc2_app_kit::NSWindow;
+            use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+            let ns_window = &*webview.ns_window().cast::<NSWindow>();
+            let Some(screen) = ns_window.screen() else {
+                WINDOW_FRAME_ANIMATION_ACTIVE.store(false, Ordering::Release);
+                return;
+            };
+
+            let current = ns_window.frame();
+            let visible = screen.visibleFrame();
+            let is_maximized = (current.origin.x - visible.origin.x).abs() < 1.0
+                && (current.origin.y - visible.origin.y).abs() < 1.0
+                && (current.size.width - visible.size.width).abs() < 1.0
+                && (current.size.height - visible.size.height).abs() < 1.0;
+
+            let target = if is_maximized {
+                RESTORED_WINDOW_FRAME
+                    .lock()
+                    .expect("restored window frame lock poisoned")
+                    .take()
+                    .map(|[x, y, width, height]| {
+                        NSRect::new(NSPoint::new(x, y), NSSize::new(width, height))
+                    })
+                    .unwrap_or(current)
+            } else {
+                *RESTORED_WINDOW_FRAME
+                    .lock()
+                    .expect("restored window frame lock poisoned") = Some([
+                    current.origin.x,
+                    current.origin.y,
+                    current.size.width,
+                    current.size.height,
+                ]);
+                visible
+            };
+
+            let target = [
+                target.origin.x,
+                target.origin.y,
+                target.size.width,
+                target.size.height,
+            ];
+            let duration = ns_window.animationResizeTime(NSRect::new(
+                NSPoint::new(target[0], target[1]),
+                NSSize::new(target[2], target[3]),
+            ));
+
+            if duration <= f64::EPSILON {
+                ns_window.setFrame_display(
+                    NSRect::new(
+                        NSPoint::new(target[0], target[1]),
+                        NSSize::new(target[2], target[3]),
+                    ),
+                    true,
+                );
+                WINDOW_FRAME_ANIMATION_ACTIVE.store(false, Ordering::Release);
+                return;
+            }
+
+            animate_macos_window_frame(
+                animation_window,
+                [
+                    current.origin.x,
+                    current.origin.y,
+                    current.size.width,
+                    current.size.height,
+                ],
+                target,
+                duration,
+            );
+        }) {
+            WINDOW_FRAME_ANIMATION_ACTIVE.store(false, Ordering::Release);
+            return Err(error.to_string());
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        window.toggle_maximize().map_err(|error| error.to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app =
@@ -152,7 +330,11 @@ pub fn run() {
 
                 Ok(())
             })
-            .invoke_handler(tauri::generate_handler![get_devices, show_main_window])
+            .invoke_handler(tauri::generate_handler![
+                get_devices,
+                show_main_window,
+                toggle_maximize_realtime
+            ])
             .build(tauri::generate_context!())
             .expect("failed to run Camux");
 

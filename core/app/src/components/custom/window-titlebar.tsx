@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { type as getOsType } from "@tauri-apps/plugin-os";
 import { useEffect, useState, type MouseEvent, type PropsWithChildren } from "react";
+import { toggleMaximizeRealtime } from "../../core/backend";
 
 type DesktopPlatform = "macos" | "windows" | "linux";
 
@@ -176,7 +177,7 @@ export function WindowTitlebar({ children }: PropsWithChildren) {
     // jitter does not make title-bar zoom appear broken.
     event.preventDefault();
     event.stopPropagation();
-    void getCurrentWindow().toggleMaximize();
+    void toggleMaximizeRealtime();
   };
 
   const controls = (
