@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CircleAlert, CircleCheck, FolderOpen, LoaderCircle, RotateCcw, Wrench } from "lucide-react";
 import { SettingsItem } from "@/components/custom/settings/item";
 import { SettingsSection } from "@/components/custom/settings/section";
@@ -38,6 +38,13 @@ const QUALITY_OPTIONS: ReadonlyArray<{ value: PreferredQuality; label: string }>
   { value: "fullHd", label: "1080p Full HD" },
   { value: "ultraHd", label: "4K Ultra HD" },
 ];
+const QUALITY_DIMENSIONS: Partial<Record<PreferredQuality, { width: number; height: number }>> = {
+  hd: { width: 1280, height: 720 },
+  fullHd: { width: 1920, height: 1080 },
+  ultraHd: { width: 3840, height: 2160 },
+};
+const AUTOMATIC_FRAME_RATE = "__automatic_frame_rate__";
+const COMMON_FRAME_RATES = [15, 24, 25, 30, 50, 60, 120];
 const DISCONNECT_OPTIONS: ReadonlyArray<{ value: DisconnectBehavior; label: string }> = [
   { value: "blackFrame", label: "Black frame" },
   { value: "freezeLastFrame", label: "Freeze last frame" },
@@ -52,6 +59,42 @@ const ACCELERATION_OPTIONS: ReadonlyArray<{ value: HardwareAcceleration; label: 
 const messageFrom = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 const labelFor = <Value extends string>(options: ReadonlyArray<{ value: Value; label: string }>, value: Value) =>
   options.find((option) => option.value === value)?.label ?? value;
+
+const supportedFrameRates = (devices: CameraDevice[], settings: AppSettings): number[] => {
+  const selectedDevices = settings.defaultCamera
+    ? devices.filter((device) => device.id === settings.defaultCamera)
+    : devices;
+  const dimensions = QUALITY_DIMENSIONS[settings.preferredQuality];
+  const rates = new Set<number>();
+
+  selectedDevices.forEach((device) => {
+    device.formats.forEach((format) => {
+      format.frameSizes.forEach((size) => {
+        const matchesQuality =
+          !dimensions ||
+          (size.kind === "discrete"
+            ? size.width === dimensions.width && size.height === dimensions.height
+            : dimensions.width >= size.minWidth &&
+              dimensions.width <= size.maxWidth &&
+              dimensions.height >= size.minHeight &&
+              dimensions.height <= size.maxHeight);
+        if (!matchesQuality) return;
+
+        size.frameRates.forEach((range) => {
+          const add = (rate: number) => {
+            if (Number.isFinite(rate) && rate >= 1 && rate <= 240) rates.add(Math.round(rate * 1000) / 1000);
+          };
+          add(range.min);
+          add(range.max);
+          COMMON_FRAME_RATES.filter((rate) => rate >= range.min && rate <= range.max).forEach(add);
+        });
+      });
+    });
+  });
+
+  if (settings.preferredFrameRate !== null) rates.add(settings.preferredFrameRate);
+  return [...rates].sort((left, right) => left - right);
+};
 
 const SettingsSelect = <Value extends string>({
   label,
@@ -189,6 +232,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
 
   const isDisabled = (action: PendingAction) => pending === action || pending === "repair" || pending === "reset";
   const busy = pending !== undefined;
+  const frameRateOptions = useMemo(() => (settings ? supportedFrameRates(devices, settings) : []), [devices, settings]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -277,6 +321,29 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                     disabled={isDisabled("preferredQuality")}
                     onValueChange={(value) => void commit("preferredQuality", value)}
                   />
+                </SettingsItem>
+                <SettingsItem title="Preferred frame rate">
+                  <Select
+                    value={settings.preferredFrameRate === null ? AUTOMATIC_FRAME_RATE : String(settings.preferredFrameRate)}
+                    disabled={isDisabled("preferredFrameRate")}
+                    onValueChange={(value) =>
+                      void commit("preferredFrameRate", value === AUTOMATIC_FRAME_RATE ? null : Number(value))
+                    }
+                  >
+                    <SelectTrigger aria-label="Preferred frame rate" size="sm" className="min-w-40 justify-between">
+                      <SelectValue>
+                        {settings.preferredFrameRate === null ? "Automatic" : `${settings.preferredFrameRate} fps`}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent side="bottom" align="end">
+                      <SelectItem value={AUTOMATIC_FRAME_RATE}>Automatic</SelectItem>
+                      {frameRateOptions.map((frameRate) => (
+                        <SelectItem key={frameRate} value={String(frameRate)}>
+                          {frameRate} fps
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </SettingsItem>
                 <SettingsItem title="When camera disconnects">
                   <SettingsSelect

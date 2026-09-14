@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CameraOff, CircleAlert, LoaderCircle, RefreshCw, Settings } from "lucide-react";
 import { version as appVersion } from "../package.json";
 import { Badge } from "./components/ui/badge";
-import { getDevices, showMainWindow } from "./core/backend";
+import { getCameraAvailability, getDevices, showMainWindow } from "./core/backend";
 import type { CameraDevice } from "./core/backend";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
@@ -51,10 +51,43 @@ export default function App() {
     };
   }, []);
 
+  const deviceIds = devices.map((device) => device.id).join("\0");
+  useEffect(() => {
+    if (!deviceIds) return;
+    let active = true;
+    const ids = deviceIds.split("\0");
+    const refreshAvailability = async () => {
+      try {
+        const availability = await getCameraAvailability(ids);
+        if (!active) return;
+        const byId = new Map(availability.map((status) => [status.id, status]));
+        setDevices((current) =>
+          current.map((device) => {
+            const status = byId.get(device.id);
+            if (!status) return device;
+            const sameOwners =
+              device.inUseBy.length === status.inUseBy.length &&
+              device.inUseBy.every((owner, index) => owner === status.inUseBy[index]);
+            if (device.connected === status.connected && device.inUse === status.inUse && sameOwners) return device;
+            return { ...device, connected: status.connected, inUse: status.inUse, inUseBy: status.inUseBy };
+          }),
+        );
+      } catch {
+        // A full refresh remains available if a transient status poll fails.
+      }
+    };
+    void refreshAvailability();
+    const interval = window.setInterval(() => void refreshAvailability(), 2000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [deviceIds]);
+
   const cameraCount = devices.length;
   const cameraLabel = `${cameraCount} ${cameraCount === 1 ? "camera" : "cameras"}`;
 
-  // settings state
+  // Settings dialog state.
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (

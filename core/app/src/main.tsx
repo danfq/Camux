@@ -4,7 +4,7 @@ import "./global.css";
 import App from "./App.tsx";
 import { initializeTheme } from "./lib/theme";
 
-initializeTheme();
+initializeTheme(); // Apply the saved palette before the first paint.
 
 const preventDefault = (event: Event) => event.preventDefault();
 
