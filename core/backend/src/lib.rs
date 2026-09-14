@@ -1,10 +1,13 @@
 mod platform;
+mod settings;
 
 use platform::{CameraBackend, CameraDevice, PlatformBackend};
+use settings::{AppSettings, SettingsState, VirtualCameraStatus};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
+use tauri::Manager;
 use tauri::webview::PageLoadEvent;
 
 #[cfg(target_os = "macos")]
@@ -120,6 +123,51 @@ fn restore_macos_bundled_icon() {
 #[tauri::command]
 fn get_devices() -> Result<Vec<CameraDevice>, String> {
     PlatformBackend::new().devices()
+}
+
+#[tauri::command]
+fn get_settings(state: tauri::State<'_, SettingsState>) -> Result<AppSettings, String> {
+    state.snapshot()
+}
+
+#[tauri::command]
+fn set_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SettingsState>,
+    settings: AppSettings,
+) -> Result<AppSettings, String> {
+    state.replace(&app, settings)
+}
+
+#[tauri::command]
+fn reset_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SettingsState>,
+) -> Result<AppSettings, String> {
+    state.replace(&app, AppSettings::default())
+}
+
+#[tauri::command]
+fn get_virtual_camera_status(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SettingsState>,
+) -> Result<VirtualCameraStatus, String> {
+    let settings = state.snapshot()?;
+    settings::virtual_camera_status(&app, &settings.virtual_camera_name)
+}
+
+#[tauri::command]
+fn repair_virtual_camera(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SettingsState>,
+) -> Result<VirtualCameraStatus, String> {
+    let settings = state.snapshot()?;
+    settings::repair_virtual_camera(&app, &settings.virtual_camera_name)
+}
+
+#[tauri::command]
+fn open_logs(app: tauri::AppHandle) -> Result<(), String> {
+    settings::open_logs(&app)
 }
 
 #[tauri::command]
@@ -310,6 +358,9 @@ pub fn run() {
         tauri::Builder::default()
             .plugin(tauri_plugin_os::init())
             .setup(|app| {
+                let settings = SettingsState::load(app.handle()).map_err(std::io::Error::other)?;
+                app.manage(settings);
+
                 let window_config =
                     app.config().app.windows.first().cloned().ok_or_else(|| {
                         std::io::Error::other("missing main window configuration")
@@ -332,16 +383,50 @@ pub fn run() {
             })
             .invoke_handler(tauri::generate_handler![
                 get_devices,
+                get_settings,
+                set_settings,
+                reset_settings,
+                get_virtual_camera_status,
+                repair_virtual_camera,
+                open_logs,
                 show_main_window,
                 toggle_maximize_realtime
             ])
             .build(tauri::generate_context!())
             .expect("failed to run Camux");
 
-    app.run(|_app_handle, _event| {
+    app.run(|app_handle, event| {
         #[cfg(all(debug_assertions, target_os = "macos"))]
-        if matches!(_event, tauri::RunEvent::Ready) {
+        if matches!(event, tauri::RunEvent::Ready) {
             restore_macos_bundled_icon();
+        }
+
+        if let tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } = &event
+        {
+            let keep_running = app_handle
+                .state::<SettingsState>()
+                .snapshot()
+                .is_ok_and(|settings| settings.keep_running_when_closed);
+            if keep_running {
+                api.prevent_close();
+                if let Some(window) = app_handle.get_webview_window(label) {
+                    let _ = window.hide();
+                }
+            } else {
+                app_handle.exit(0);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = event
+            && let Some(window) = app_handle.get_webview_window("main")
+        {
+            let _ = window.show();
+            let _ = window.set_focus();
         }
     });
 }
