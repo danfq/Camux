@@ -2,8 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./global.css";
 import App from "./App.tsx";
+import { initializeTheme } from "./lib/theme";
 
-document.documentElement.classList.add("dark");
+initializeTheme();
 
 const preventDefault = (event: Event) => event.preventDefault();
 
