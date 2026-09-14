@@ -1,0 +1,41 @@
+[package]
+name = "camux"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "camux_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11", features = [] }
+tauri-plugin-os = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "NSApplication",
+  "NSColor",
+  "NSImage",
+  "NSScreen",
+  "NSView",
+  "NSWindow",
+] }
+objc2-foundation = "0.3"
+objc2-av-foundation = { version = "0.3", features = [
+  "AVCaptureDevice",
+  "AVMediaFormat",
+  "objc2-core-foundation",
+  "objc2-core-media",
+] }
+objc2-core-media = { version = "0.3", features = ["CMFormatDescription", "CMTime"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+v4l = "0.14"
+webkit2gtk = "2"

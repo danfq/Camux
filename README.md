@@ -12,7 +12,8 @@
 
 | Tool                                              | Role                                |
 | ------------------------------------------------- | ----------------------------------- |
-| [Rust](https://www.rust-lang.org/) (edition 2024) | Native application code             |
+| [Rust](https://www.rust-lang.org/) (edition 2024) | Native backend and camera access    |
+| [Tauri](https://v2.tauri.app/)                    | Rust-to-frontend IPC and app shell  |
 | [Bun](https://bun.com/) + TypeScript              | Frontend tooling and application UI |
 
 ## Prerequisites
@@ -37,8 +38,9 @@ Run `just` to see every available recipe.
 
 | Command      | Description                                |
 | ------------ | ------------------------------------------ |
-| `just run`   | Run the Rust application                   |
-| `just build` | Build the Rust application                 |
+| `just run`   | Run the desktop app with hot reload        |
+| `just build` | Build the desktop application              |
+| `just build-app` | Build the frontend only                |
 | `just check` | Type-check the Rust application            |
 | `just test`  | Run Rust tests                             |
 | `just fmt`   | Format Rust sources                        |

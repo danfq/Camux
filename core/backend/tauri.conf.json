@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Camux",
+  "version": "0.1.0",
+  "identifier": "dev.danfq.camux",
+  "build": {
+    "beforeDevCommand": "sh ../scripts/compile-macos-icon.sh && bun run --cwd app dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run --cwd app build && sh ../scripts/compile-macos-icon.sh",
+    "frontendDist": "../app/dist"
+  },
+  "app": {
+    "enableGTKAppId": true,
+    "windows": [
+      {
+        "create": false,
+        "title": "Camux",
+        "backgroundColor": "#111317",
+        "decorations": false,
+        "resizable": true,
+        "devtools": false,
+        "visible": false,
+        "width": 800,
+        "height": 600,
+        "minWidth": 700,
+        "minHeight": 520
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["../../assets/logo.png"]
+  }
+}

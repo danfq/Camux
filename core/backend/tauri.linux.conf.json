@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "icon": ["../../assets/macos_icon_fallback.png"],
+    "resources": {
+      "../../vendor/v4l2loopback": "v4l2loopback"
+    },
+    "targets": ["deb", "rpm"],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "../../assets/linux.desktop.hbs"
+      },
+      "rpm": {
+        "desktopTemplate": "../../assets/linux.desktop.hbs"
+      }
+    }
+  }
+}
