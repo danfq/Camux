@@ -93,10 +93,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
     setError(undefined);
 
     try {
-      const [nextSettings, nextDevices] = await Promise.all([
-        getSettings(),
-        getDevices().catch(() => [] as CameraDevice[]),
-      ]);
+      const [nextSettings, nextDevices] = await Promise.all([getSettings(), getDevices().catch(() => [] as CameraDevice[])]);
       setLocalSettings(nextSettings);
       setDevices(nextDevices);
       setTheme(nextSettings.appearance);
@@ -114,17 +111,19 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
   }, [setTheme]);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- opening the dialog starts a native data load
-    if (open) void load();
-  }, [load, open]);
+    // oxlint-disable-next-line react/set-state-in-effect -- prefetch native settings while the dialog is closed
+    void load();
+  }, [load]);
 
   const commit = async <Key extends keyof AppSettings>(key: Key, value: AppSettings[Key]) => {
     if (!settings) return;
 
+    const nextSettings = { ...settings, [key]: value };
     setPending(key);
     setError(undefined);
+    setLocalSettings(nextSettings);
     try {
-      const saved = await setSettings({ ...settings, [key]: value });
+      const saved = await setSettings(nextSettings);
       setLocalSettings(saved);
       if (key === "appearance") setTheme(saved.appearance);
       if (key === "virtualCameraName") setVirtualCamera(await getVirtualCameraStatus());
@@ -188,6 +187,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
     }
   };
 
+  const isDisabled = (action: PendingAction) => pending === action || pending === "repair" || pending === "reset";
   const busy = pending !== undefined;
 
   return (
@@ -215,7 +215,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                     label="Appearance"
                     value={settings.appearance}
                     options={THEME_OPTIONS.map((value) => ({ value, label: upperFirstLetter(value) }))}
-                    disabled={busy}
+                    disabled={isDisabled("appearance")}
                     onValueChange={(value: Theme) => void commit("appearance", value)}
                   />
                 </SettingsItem>
@@ -223,7 +223,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                   <Switch
                     aria-label="Launch Camux at login"
                     checked={settings.launchAtLogin}
-                    disabled={busy}
+                    disabled={isDisabled("launchAtLogin")}
                     onCheckedChange={(checked) => void commit("launchAtLogin", checked)}
                   />
                 </SettingsItem>
@@ -231,7 +231,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                   <Switch
                     aria-label="Keep Camux running when closed"
                     checked={settings.keepRunningWhenClosed}
-                    disabled={busy}
+                    disabled={isDisabled("keepRunningWhenClosed")}
                     onCheckedChange={(checked) => void commit("keepRunningWhenClosed", checked)}
                   />
                 </SettingsItem>
@@ -239,7 +239,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                   <Switch
                     aria-label="Restore previous session"
                     checked={settings.restorePreviousSession}
-                    disabled={busy}
+                    disabled={isDisabled("restorePreviousSession")}
                     onCheckedChange={(checked) => void commit("restorePreviousSession", checked)}
                   />
                 </SettingsItem>
@@ -249,14 +249,10 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                 <SettingsItem title="Default camera">
                   <Select
                     value={settings.defaultCamera ?? AUTOMATIC_CAMERA}
-                    disabled={busy}
+                    disabled={isDisabled("defaultCamera")}
                     onValueChange={(value) => void commit("defaultCamera", value === AUTOMATIC_CAMERA ? null : value)}
                   >
-                    <SelectTrigger
-                      aria-label="Default camera"
-                      size="sm"
-                      className="max-w-56 min-w-40 justify-between"
-                    >
+                    <SelectTrigger aria-label="Default camera" size="sm" className="max-w-56 min-w-40 justify-between">
                       <SelectValue>
                         {settings.defaultCamera
                           ? (devices.find((device) => device.id === settings.defaultCamera)?.name ?? "Unavailable camera")
@@ -278,7 +274,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                     label="Preferred quality"
                     value={settings.preferredQuality}
                     options={QUALITY_OPTIONS}
-                    disabled={busy}
+                    disabled={isDisabled("preferredQuality")}
                     onValueChange={(value) => void commit("preferredQuality", value)}
                   />
                 </SettingsItem>
@@ -287,7 +283,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                     label="When camera disconnects"
                     value={settings.disconnectBehavior}
                     options={DISCONNECT_OPTIONS}
-                    disabled={busy}
+                    disabled={isDisabled("disconnectBehavior")}
                     onValueChange={(value) => void commit("disconnectBehavior", value)}
                   />
                 </SettingsItem>
@@ -324,12 +320,10 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                       aria-label="Virtual camera name"
                       className="h-8 w-44 rounded-3xl border border-input bg-input/50 px-3 text-sm outline-none transition-[border-color,box-shadow] focus:border-ring focus:ring-3 focus:ring-ring/30 disabled:opacity-50"
                       value={settings.virtualCameraName}
-                      disabled={busy}
+                      disabled={isDisabled("virtualCameraName")}
                       maxLength={64}
                       onChange={(event) =>
-                        setLocalSettings((current) =>
-                          current ? { ...current, virtualCameraName: event.target.value } : current,
-                        )
+                        setLocalSettings((current) => (current ? { ...current, virtualCameraName: event.target.value } : current))
                       }
                       onBlur={(event) => void commit("virtualCameraName", event.target.value)}
                       onKeyDown={(event) => {
@@ -343,11 +337,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => void handleRepair()}
                     >
-                      {pending === "repair" ? (
-                        <LoaderCircle className="animate-spin" aria-hidden="true" />
-                      ) : (
-                        <Wrench aria-hidden="true" />
-                      )}
+                      {pending === "repair" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Wrench aria-hidden="true" />}
                       Repair
                     </Button>
                   </div>
@@ -360,27 +350,20 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
                     label="Hardware acceleration"
                     value={settings.hardwareAcceleration}
                     options={ACCELERATION_OPTIONS}
-                    disabled={busy}
+                    disabled={isDisabled("hardwareAcceleration")}
                     onValueChange={(value) => void commit("hardwareAcceleration", value)}
                   />
                 </SettingsItem>
                 <SettingsItem title="Diagnostic logs">
                   <Button variant="secondary" size="sm" disabled={busy} onClick={() => void handleOpenLogs()}>
-                    {pending === "logs" ? (
-                      <LoaderCircle className="animate-spin" aria-hidden="true" />
-                    ) : (
-                      <FolderOpen aria-hidden="true" />
-                    )}
+                    {pending === "logs" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <FolderOpen aria-hidden="true" />}
                     Open logs
                   </Button>
                 </SettingsItem>
               </SettingsSection>
 
               {error && (
-                <div
-                  className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive"
-                  role="alert"
-                >
+                <div className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
                   <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>{error}</span>
                 </div>
@@ -388,11 +371,7 @@ export const SettingsDialog = ({ open, onOpenChange }: Props) => {
 
               <div className="flex justify-end border-t pt-5">
                 <Button variant="destructive" size="sm" disabled={busy} onClick={() => void handleReset()}>
-                  {pending === "reset" ? (
-                    <LoaderCircle className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <RotateCcw aria-hidden="true" />
-                  )}
+                  {pending === "reset" ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
                   Reset settings
                 </Button>
               </div>
