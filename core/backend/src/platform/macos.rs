@@ -75,9 +75,9 @@ impl CameraBackend for MacOSBackend {
                     suspended: Some(unsafe { device.isSuspended() }),
                     driver: None,
                     capability_bits: None,
-                    capabilities: camera_capabilities(device),
-                    formats: unsafe { camera_formats(device) },
-                    active_format: unsafe { active_format(device) },
+                    capabilities: camera_capabilities(&device),
+                    formats: unsafe { camera_formats(&device) },
+                    active_format: unsafe { active_format(&device) },
                     controls: Vec::new(),
                 })
             })
@@ -187,7 +187,7 @@ fn camera_capabilities(device: &AVCaptureDevice) -> Vec<String> {
 unsafe fn camera_formats(device: &AVCaptureDevice) -> Vec<CameraFormat> {
     unsafe { device.formats() }
         .iter()
-        .map(|format| unsafe { camera_format(format) })
+        .map(|format| unsafe { camera_format(&format) })
         .collect()
 }
 
