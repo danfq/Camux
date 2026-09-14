@@ -2,7 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { type as getOsType } from "@tauri-apps/plugin-os";
 import { useEffect, useState, type MouseEvent, type PropsWithChildren } from "react";
-import { toggleMaximizeRealtime } from "../../core/backend";
+import { toggleMaximizeRealtime } from "../../../core/backend";
 
 type DesktopPlatform = "macos" | "windows" | "linux";
 
@@ -128,24 +128,28 @@ export function WindowTitlebar({ children }: PropsWithChildren) {
       if (!disposed) setFullscreen(value);
     });
 
-    void appWindow.onFocusChanged(({ payload }) => {
-      if (!disposed) setFocused(payload);
-    }).then((unlisten) => {
-      if (disposed) safelyUnlisten(unlisten);
-      else unlisteners.push(unlisten);
-    });
+    void appWindow
+      .onFocusChanged(({ payload }) => {
+        if (!disposed) setFocused(payload);
+      })
+      .then((unlisten) => {
+        if (disposed) safelyUnlisten(unlisten);
+        else unlisteners.push(unlisten);
+      });
 
-    void appWindow.onResized(() => {
-      void appWindow.isMaximized().then((value) => {
-        if (!disposed) setMaximized(value);
+    void appWindow
+      .onResized(() => {
+        void appWindow.isMaximized().then((value) => {
+          if (!disposed) setMaximized(value);
+        });
+        void appWindow.isFullscreen().then((value) => {
+          if (!disposed) setFullscreen(value);
+        });
+      })
+      .then((unlisten) => {
+        if (disposed) safelyUnlisten(unlisten);
+        else unlisteners.push(unlisten);
       });
-      void appWindow.isFullscreen().then((value) => {
-        if (!disposed) setFullscreen(value);
-      });
-    }).then((unlisten) => {
-      if (disposed) safelyUnlisten(unlisten);
-      else unlisteners.push(unlisten);
-    });
 
     return () => {
       disposed = true;
@@ -185,7 +189,12 @@ export function WindowTitlebar({ children }: PropsWithChildren) {
       {platform === "macos" ? (
         <>
           <WindowControlButton action="close" icon="close" label="Close" onClick={() => runWindowAction("close")} />
-          <WindowControlButton action="minimize" icon="minimize" label="Minimize" onClick={() => runWindowAction("minimize")} />
+          <WindowControlButton
+            action="minimize"
+            icon="minimize"
+            label="Minimize"
+            onClick={() => runWindowAction("minimize")}
+          />
           <WindowControlButton
             action="maximize"
             icon={fullscreen ? "exit-fullscreen" : "fullscreen"}
@@ -195,7 +204,12 @@ export function WindowTitlebar({ children }: PropsWithChildren) {
         </>
       ) : (
         <>
-          <WindowControlButton action="minimize" icon="minimize" label="Minimize" onClick={() => runWindowAction("minimize")} />
+          <WindowControlButton
+            action="minimize"
+            icon="minimize"
+            label="Minimize"
+            onClick={() => runWindowAction("minimize")}
+          />
           <WindowControlButton
             action="maximize"
             icon={maximized ? "restore" : "maximize"}
