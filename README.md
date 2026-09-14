@@ -5,53 +5,54 @@
 <h1 align="center">Camux</h1>
 
 <p align="center">
-  A lightweight, cross-platform webcam splitter, built with Rust and Bun-powered TypeScript.
+  Use one webcam in more than one app at the same time.
 </p>
 
-## Tech stack
+> **Camux is currently in beta.** The main experience is taking shape, but you
+> may still find rough edges or features that change between releases.
 
-| Tool                                              | Role                                |
-| ------------------------------------------------- | ----------------------------------- |
-| [Rust](https://www.rust-lang.org/) (edition 2024) | Native backend and camera access    |
-| [Tauri](https://v2.tauri.app/)                    | Rust-to-frontend IPC and app shell  |
-| [Bun](https://bun.com/) + TypeScript              | Frontend tooling and application UI |
+## Download Camux
 
-## Prerequisites
+Go to the [latest release](https://github.com/danfq/Camux/releases/latest) and
+choose the download for your computer. Each release page also lists everything
+that changed since the previous version.
 
-Install the following tools before getting started:
+- **macOS:** download the `.dmg` file. It works on both Apple silicon and Intel
+  Macs.
+- **Linux:** download the `.deb` file for Debian or Ubuntu, or the `.rpm` file
+  for Fedora and similar distributions.
+- **Windows:** download the installer. The Windows version is an early preview,
+  and camera support is still being developed.
 
-- A current stable [Rust toolchain](https://rustup.rs/)
-- [Bun](https://bun.com/docs/installation)
-- [Just](https://just.systems/man/en/packages.html)
+Camux is not yet available through an app store, so your computer may ask you
+to confirm that you trust the downloaded app when opening it for the first
+time.
 
-## Quick start
+## What Camux does
+
+Camux lets you choose a connected camera, preview its picture, adjust supported
+camera controls, and route the video to a virtual camera that other apps can
+use. This is useful when the same camera needs to appear in calls, recordings,
+or streaming tools at once.
+
+## For developers
+
+Camux is built with Rust, Tauri, Bun, TypeScript, and React. To run it from
+source, install a current Rust toolchain, Bun, and Just, then use:
 
 ```sh
 git clone https://github.com/danfq/Camux.git
 cd Camux
+bun install --cwd core/app
 just run
 ```
 
-Run `just` to see every available recipe.
+Run `just` to see the available development commands.
 
-## Development commands
-
-| Command      | Description                                |
-| ------------ | ------------------------------------------ |
-| `just run`   | Run the desktop app with hot reload        |
-| `just build` | Build the desktop application              |
-| `just build-app` | Build the frontend only                |
-| `just check` | Type-check the Rust application            |
-| `just test`  | Run Rust tests                             |
-| `just fmt`   | Format Rust sources                        |
-| `just lint`  | Run Clippy with warnings treated as errors |
-| `just clean` | Remove Rust build artifacts                |
-
-Arguments passed to `just run` are forwarded to the Rust binary:
-
-```sh
-just run --example-argument
-```
+To publish a release, make sure the branch is clean and pushed, then run
+`just release`. The release workflow chooses the next version from the latest
+commit: breaking changes increase the first number, new features increase the
+second, and fixes or other changes increase the third.
 
 ## License
 

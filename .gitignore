@@ -65,6 +65,6 @@ dist
 debug/
 target/
 Cargo.lock
+!core/backend/Cargo.lock
 **/*.rs.bk
 *.pdb
-

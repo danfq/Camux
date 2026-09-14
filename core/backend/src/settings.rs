@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
@@ -212,6 +213,10 @@ fn append_log(app: &AppHandle, message: &str) {
     let _ = writeln!(file, "[{timestamp}] {message}");
 }
 
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux")),
+    allow(unused_variables)
+)]
 fn launch_at_login_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
@@ -246,6 +251,7 @@ fn configure_launch_at_login(app: &AppHandle, enabled: bool) -> Result<(), Strin
         };
     }
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let executable = std::env::current_exe()
         .map_err(|error| format!("Could not locate the Camux executable: {error}"))?;
     let parent = entry
@@ -266,6 +272,10 @@ fn configure_launch_at_login(app: &AppHandle, enabled: bool) -> Result<(), Strin
         quote_desktop_exec(&executable.to_string_lossy())
     );
 
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    return Err("Launch at login is unsupported on this platform".to_owned());
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     fs::write(entry, contents).map_err(|error| format!("Could not enable launch at login: {error}"))
 }
 
@@ -294,12 +304,17 @@ pub struct VirtualCameraStatus {
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum VirtualCameraState {
+    #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
     Ready,
     #[cfg(target_os = "linux")]
     NeedsRepair,
     NotInstalled,
 }
 
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux")),
+    allow(unused_variables)
+)]
 pub fn virtual_camera_status(_app: &AppHandle, name: &str) -> Result<VirtualCameraStatus, String> {
     #[cfg(target_os = "macos")]
     {
@@ -373,6 +388,10 @@ pub fn virtual_camera_status(_app: &AppHandle, name: &str) -> Result<VirtualCame
     })
 }
 
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux")),
+    allow(unused_variables)
+)]
 pub fn repair_virtual_camera(app: &AppHandle, name: &str) -> Result<VirtualCameraStatus, String> {
     #[cfg(target_os = "macos")]
     {

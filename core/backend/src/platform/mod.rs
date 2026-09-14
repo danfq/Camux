@@ -40,7 +40,7 @@ pub struct CameraDriver {
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum CameraPosition {
     Front,
     Back,
@@ -64,6 +64,7 @@ pub struct CameraFormat {
 }
 
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -151,8 +152,14 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+mod unsupported;
+
 #[cfg(target_os = "linux")]
 pub use linux::LinuxBackend as PlatformBackend;
 
 #[cfg(target_os = "macos")]
 pub use macos::MacOSBackend as PlatformBackend;
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub use unsupported::UnsupportedBackend as PlatformBackend;

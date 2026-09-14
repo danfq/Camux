@@ -19,6 +19,37 @@ remove-dev-icon:
 build:
     ../app/node_modules/.bin/tauri build
 
+# Release native bundles through GitHub Actions.
+release:
+    #!/bin/sh
+    set -eu
+
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "The worktree must be clean before releasing" >&2
+        exit 1
+    fi
+
+    branch=$(git symbolic-ref --quiet --short HEAD) || {
+        echo "Releases must be started from a branch, not a detached HEAD" >&2
+        exit 1
+    }
+
+    git fetch origin "$branch"
+    remote_head=$(git rev-parse "origin/$branch")
+    local_head=$(git rev-parse HEAD)
+    if [ "$local_head" != "$remote_head" ]; then
+        echo "HEAD must match origin/$branch before releasing" >&2
+        exit 1
+    fi
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "GitHub CLI (gh) is required to start a release" >&2
+        exit 1
+    fi
+
+    gh workflow run release.yml --ref "$branch"
+    echo "Release workflow started"
+
 # Build the frontend only.
 [working-directory("core/app")]
 build-app:

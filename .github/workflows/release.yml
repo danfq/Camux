@@ -1,0 +1,213 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+      release_id: ${{ steps.version.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: version
+        name: Bump package version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "branch" ]]; then
+            echo "Release workflow must be dispatched from a branch" >&2
+            exit 1
+          fi
+
+          backend_version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' core/backend/Cargo.toml | head -n 1)
+          frontend_version=$(jq -r '.version' core/app/package.json)
+          bundle_version=$(jq -r '.version' core/backend/tauri.conf.json)
+          if [[ "$backend_version" != "$frontend_version" || "$backend_version" != "$bundle_version" ]]; then
+            echo "Frontend, backend, and bundle versions must match before releasing" >&2
+            exit 1
+          fi
+          if [[ ! "$backend_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Package version is not a stable semantic version: $backend_version" >&2
+            exit 1
+          fi
+
+          major=${BASH_REMATCH[1]}
+          minor=${BASH_REMATCH[2]}
+          patch=${BASH_REMATCH[3]}
+
+          commit_subject=$(git log -1 --format=%s)
+          commit_message=$(git log -1 --format=%B)
+          breaking_subject_re='^[[:alnum:]_-]+(\([^)]*\))?!:'
+          feature_subject_re='^feat(\([^)]*\))?:'
+          if [[ "$commit_subject" =~ $breaking_subject_re ]] || grep -Eq '^BREAKING[ -]CHANGE:' <<< "$commit_message"; then
+            bump=major
+          elif [[ "$commit_subject" =~ $feature_subject_re ]]; then
+            bump=minor
+          else
+            bump=patch
+          fi
+
+          previous_tag=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [[ -n "$previous_tag" ]]; then
+            if ! git rev-parse --verify --quiet "refs/tags/$previous_tag" >/dev/null; then
+              echo "Latest release tag $previous_tag is missing from the checkout" >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$previous_tag" HEAD; then
+              echo "Latest release $previous_tag is not an ancestor of this branch" >&2
+              exit 1
+            fi
+            changelog_range="$previous_tag..HEAD"
+            if [[ $(git rev-list --count "$changelog_range") -eq 0 ]]; then
+              echo "There are no changes since $previous_tag" >&2
+              exit 1
+            fi
+          else
+            changelog_range=HEAD
+          fi
+
+          {
+            echo "## Changes"
+            echo
+            git log --first-parent "$changelog_range" --pretty=format:'- %s (%h)'
+            echo
+          } > "$RUNNER_TEMP/release-notes.md"
+
+          case "$bump" in
+            patch) version="$major.$minor.$((patch + 1))" ;;
+            minor) version="$major.$((minor + 1)).0" ;;
+            major) version="$((major + 1)).0.0" ;;
+          esac
+
+          sed -i -E "0,/^version = \"[^\"]+\"/s//version = \"$version\"/" core/backend/Cargo.toml
+          sed -i -E "/^name = \"camux\"$/,/^$/s/^version = \"[^\"]+\"/version = \"$version\"/" core/backend/Cargo.lock
+          jq --arg version "$version" '.version = $version' core/backend/tauri.conf.json > tauri.conf.json.tmp
+          mv tauri.conf.json.tmp core/backend/tauri.conf.json
+          jq --arg version "$version" '.version = $version' core/app/package.json > package.json.tmp
+          mv package.json.tmp core/app/package.json
+
+          git diff --check
+          changed=$(git diff --name-only)
+          expected=$'core/app/package.json\ncore/backend/Cargo.lock\ncore/backend/Cargo.toml\ncore/backend/tauri.conf.json'
+          if [[ "$changed" != "$expected" ]]; then
+            echo "Version bump changed an unexpected set of files:" >&2
+            printf '%s\n' "$changed" >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/app/package.json core/backend/Cargo.toml core/backend/Cargo.lock core/backend/tauri.conf.json
+          git commit -m "chore: bump version to $version [skip ci]"
+          git tag -a "$tag" -m "Camux $version"
+          git push --atomic origin "HEAD:refs/heads/$GITHUB_REF_NAME" "refs/tags/$tag"
+
+          gh release create "$tag" \
+            --verify-tag \
+            --draft \
+            --title "Camux $version" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+          release_id=$(gh release view "$tag" --json databaseId --jq '.databaseId')
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "Selected a $bump bump from: $commit_subject"
+
+  build:
+    needs: bump
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            args: ""
+            rust-targets: ""
+          - name: windows-x86_64
+            os: windows-latest
+            args: ""
+            rust-targets: ""
+          - name: macos-universal
+            os: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libv4l-dev patchelf xdg-utils
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install frontend dependencies
+        working-directory: core/app
+        run: bun install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: core/backend -> target
+
+      - id: tauri
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: core/backend
+          tauriScript: ../app/node_modules/.bin/tauri
+          releaseId: ${{ needs.bump.outputs.release_id }}
+          releaseDraft: true
+          retryAttempts: 2
+          uploadUpdaterJson: false
+          releaseAssetNamePattern: Camux-[version]-[platform]-[arch][setup][ext]
+          args: ${{ matrix.args }}
+
+  publish:
+    name: Publish release
+    needs:
+      - bump
+      - build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Publish completed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: v${{ needs.bump.outputs.version }}
+        run: gh release edit "$TAG" --draft=false
