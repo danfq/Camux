@@ -1,6 +1,9 @@
 {
   "bundle": {
     "icon": ["../../assets/macos_icon_fallback.png"],
+    "resources": {
+      "../../vendor/v4l2loopback": "v4l2loopback"
+    },
     "targets": ["deb", "rpm"],
     "linux": {
       "deb": {

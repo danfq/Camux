@@ -1,12 +1,16 @@
 mod platform;
 mod settings;
+mod streaming;
 
-use platform::{CameraBackend, CameraDevice, PlatformBackend};
+use platform::{CameraAvailability, CameraBackend, CameraDevice, PlatformBackend};
 use settings::{AppSettings, SettingsState, VirtualCameraStatus};
+#[cfg(target_os = "macos")]
+use std::sync::Mutex;
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
+use streaming::{CameraRouteStatus, CameraStreamInfo, CameraStreamState};
 use tauri::Manager;
 use tauri::webview::PageLoadEvent;
 
@@ -42,6 +46,33 @@ fn reveal_when_loaded(
 fn reveal_when_loaded(
     _window: &tauri::WebviewWindow,
     _content_loaded: Arc<AtomicBool>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn configure_linux_webview(
+    window: &tauri::WebviewWindow,
+) -> Result<(), Box<dyn std::error::Error>> {
+    window.with_webview(|webview| {
+        use webkit2gtk::{PermissionRequestExt, WebViewExt, glib::ObjectExt};
+
+        webview.inner().connect_permission_request(|_, request| {
+            let is_camera_request = request.is::<webkit2gtk::UserMediaPermissionRequest>()
+                || request.is::<webkit2gtk::DeviceInfoPermissionRequest>();
+            if is_camera_request {
+                request.allow();
+            }
+            is_camera_request
+        });
+    })?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_linux_webview(
+    _window: &tauri::WebviewWindow,
 ) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
@@ -126,6 +157,63 @@ fn get_devices() -> Result<Vec<CameraDevice>, String> {
 }
 
 #[tauri::command]
+fn get_camera_availability(device_ids: Vec<String>) -> Result<Vec<CameraAvailability>, String> {
+    PlatformBackend::new().availability(&device_ids)
+}
+
+#[tauri::command]
+fn set_camera_control(
+    device_id: String,
+    control_id: u32,
+    value: serde_json::Value,
+) -> Result<Vec<platform::CameraControl>, String> {
+    PlatformBackend::new().set_control(&device_id, control_id, value)
+}
+
+#[tauri::command]
+fn start_camera_stream(
+    device_id: String,
+    settings: tauri::State<'_, SettingsState>,
+    streams: tauri::State<'_, CameraStreamState>,
+) -> Result<CameraStreamInfo, String> {
+    streams.start_preview(device_id, settings.snapshot()?)
+}
+
+#[tauri::command]
+async fn next_camera_frame(
+    session_id: u64,
+    streams: tauri::State<'_, CameraStreamState>,
+) -> Result<tauri::ipc::Response, String> {
+    streams
+        .next_frame(session_id)
+        .await
+        .map(tauri::ipc::Response::new)
+}
+
+#[tauri::command]
+fn stop_camera_preview(
+    session_id: u64,
+    streams: tauri::State<'_, CameraStreamState>,
+) -> Result<(), String> {
+    streams.detach_preview(session_id)
+}
+
+#[tauri::command]
+fn route_camera_to_virtual(
+    session_id: u64,
+    settings: tauri::State<'_, SettingsState>,
+    streams: tauri::State<'_, CameraStreamState>,
+) -> Result<CameraRouteStatus, String> {
+    let settings = settings.snapshot()?;
+    streams.route_to_virtual(session_id, settings.virtual_camera_name)
+}
+
+#[tauri::command]
+fn stop_camera_route(streams: tauri::State<'_, CameraStreamState>) -> Result<(), String> {
+    streams.stop_virtual()
+}
+
+#[tauri::command]
 fn get_settings(state: tauri::State<'_, SettingsState>) -> Result<AppSettings, String> {
     state.snapshot()
 }
@@ -160,8 +248,10 @@ fn get_virtual_camera_status(
 fn repair_virtual_camera(
     app: tauri::AppHandle,
     state: tauri::State<'_, SettingsState>,
+    streams: tauri::State<'_, CameraStreamState>,
 ) -> Result<VirtualCameraStatus, String> {
     let settings = state.snapshot()?;
+    streams.stop_virtual()?;
     settings::repair_virtual_camera(&app, &settings.virtual_camera_name)
 }
 
@@ -364,6 +454,7 @@ pub fn run() {
             .setup(|app| {
                 let settings = SettingsState::load(app.handle()).map_err(std::io::Error::other)?;
                 app.manage(settings);
+                app.manage(CameraStreamState::default());
 
                 let window_config =
                     app.config().app.windows.first().cloned().ok_or_else(|| {
@@ -380,6 +471,7 @@ pub fn run() {
                     })
                     .build()?;
 
+                configure_linux_webview(&window)?;
                 reveal_when_loaded(&window, content_loaded)?;
                 configure_macos_webview(&window)?;
 
@@ -387,6 +479,13 @@ pub fn run() {
             })
             .invoke_handler(tauri::generate_handler![
                 get_devices,
+                get_camera_availability,
+                set_camera_control,
+                start_camera_stream,
+                next_camera_frame,
+                stop_camera_preview,
+                route_camera_to_virtual,
+                stop_camera_route,
                 get_settings,
                 set_settings,
                 reset_settings,

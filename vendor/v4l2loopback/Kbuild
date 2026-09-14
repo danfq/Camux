@@ -1,0 +1,2 @@
+obj-m		:= camux_v4l2loopback.o
+camux_v4l2loopback-y := v4l2loopback.o

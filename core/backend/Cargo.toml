@@ -30,8 +30,12 @@ objc2-foundation = "0.3"
 objc2-av-foundation = { version = "0.3", features = [
   "AVCaptureDevice",
   "AVMediaFormat",
+  "objc2-core-foundation",
+  "objc2-core-media",
 ] }
+objc2-core-media = { version = "0.3", features = ["CMFormatDescription", "CMTime"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 v4l = "0.14"
+webkit2gtk = "2"

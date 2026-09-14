@@ -45,7 +45,7 @@ pub enum HardwareAcceleration {
     Disabled,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     pub appearance: Appearance,
@@ -54,6 +54,7 @@ pub struct AppSettings {
     pub restore_previous_session: bool,
     pub default_camera: Option<String>,
     pub preferred_quality: PreferredQuality,
+    pub preferred_frame_rate: Option<f64>,
     pub disconnect_behavior: DisconnectBehavior,
     pub virtual_camera_name: String,
     pub hardware_acceleration: HardwareAcceleration,
@@ -68,6 +69,7 @@ impl Default for AppSettings {
             restore_previous_session: true,
             default_camera: None,
             preferred_quality: PreferredQuality::Automatic,
+            preferred_frame_rate: None,
             disconnect_behavior: DisconnectBehavior::BlackFrame,
             virtual_camera_name: "Camux Camera".to_owned(),
             hardware_acceleration: HardwareAcceleration::Automatic,
@@ -90,6 +92,11 @@ impl AppSettings {
         }
         if self.default_camera.as_ref().is_some_and(String::is_empty) {
             self.default_camera = None;
+        }
+        if self.preferred_frame_rate.is_some_and(|frame_rate| {
+            !frame_rate.is_finite() || !(1.0..=240.0).contains(&frame_rate)
+        }) {
+            return Err("Preferred frame rate must be between 1 and 240 fps".to_owned());
         }
 
         Ok(())
@@ -293,10 +300,10 @@ enum VirtualCameraState {
     NotInstalled,
 }
 
-pub fn virtual_camera_status(app: &AppHandle, name: &str) -> Result<VirtualCameraStatus, String> {
+pub fn virtual_camera_status(_app: &AppHandle, name: &str) -> Result<VirtualCameraStatus, String> {
     #[cfg(target_os = "macos")]
     {
-        let home = app.path().home_dir().map_err(|error| error.to_string())?;
+        let home = _app.path().home_dir().map_err(|error| error.to_string())?;
         let candidates = [
             PathBuf::from("/Library/CoreMediaIO/Plug-Ins/DAL/CamuxCamera.plugin"),
             home.join("Library/CoreMediaIO/Plug-Ins/DAL/CamuxCamera.plugin"),
@@ -326,14 +333,25 @@ pub fn virtual_camera_status(app: &AppHandle, name: &str) -> Result<VirtualCamer
                 })
             });
             if found {
+                let driver_version = fs::read_to_string("/sys/module/camux_v4l2loopback/version")
+                    .unwrap_or_default();
+                if driver_version.trim() != "0.15.4-camux1" {
+                    return Ok(VirtualCameraStatus {
+                        state: VirtualCameraState::NeedsRepair,
+                        detail: format!(
+                            "{name} uses a driver that cannot be shared between apps; repair it to install Camux multi-reader support"
+                        ),
+                    });
+                }
                 return Ok(VirtualCameraStatus {
                     state: VirtualCameraState::Ready,
-                    detail: format!("{name} is available to other apps"),
+                    detail: format!("{name} is available to multiple apps at the same time"),
                 });
             }
         }
 
-        let module_loaded = Path::new("/sys/module/v4l2loopback").exists();
+        let module_loaded = Path::new("/sys/module/v4l2loopback").exists()
+            || Path::new("/sys/module/camux_v4l2loopback").exists();
         return Ok(VirtualCameraStatus {
             state: if module_loaded {
                 VirtualCameraState::NeedsRepair
@@ -386,32 +404,56 @@ pub fn repair_virtual_camera(app: &AppHandle, name: &str) -> Result<VirtualCamer
 
     #[cfg(target_os = "linux")]
     {
-        let modprobe = ["/usr/sbin/modprobe", "/sbin/modprobe", "modprobe"]
+        let pkexec = ["/usr/bin/pkexec", "/bin/pkexec"]
             .into_iter()
-            .find(|candidate| *candidate == "modprobe" || Path::new(candidate).is_file())
-            .ok_or_else(|| "modprobe is unavailable; install v4l2loopback first".to_owned())?;
-        let output = Command::new(modprobe)
-            .args([
-                "v4l2loopback",
-                "exclusive_caps=1",
-                &format!("card_label={name}"),
-            ])
+            .find(|candidate| Path::new(candidate).is_file())
+            .ok_or_else(|| {
+                "PolicyKit is unavailable; install polkit or load v4l2loopback as an administrator"
+                    .to_owned()
+            })?;
+        let source = bundled_v4l2loopback_source(app)?;
+        let installer = source.join("install.sh");
+        let output = Command::new(pkexec)
+            .arg("/bin/sh")
+            .arg(installer)
+            .arg(&source)
+            .arg(name)
             .output()
-            .map_err(|error| format!("Could not start v4l2loopback: {error}"))?;
+            .map_err(|error| format!("Could not request administrator access: {error}"))?;
         if !output.status.success() {
             let reason = String::from_utf8_lossy(&output.stderr).trim().to_owned();
             return Err(if reason.is_empty() {
-                "Could not start v4l2loopback; administrator access may be required".to_owned()
+                "Could not install the Camux multi-reader driver; administrator access may be required".to_owned()
             } else {
-                format!("Could not start v4l2loopback: {reason}")
+                format!("Could not install the Camux multi-reader driver: {reason}")
             });
         }
-        append_log(app, "Virtual camera repaired");
+        append_log(
+            app,
+            "Camux multi-reader virtual camera installed and loaded",
+        );
         return virtual_camera_status(app, name);
     }
 
     #[allow(unreachable_code, unused_variables)]
     Err("Virtual cameras are unsupported on this platform".to_owned())
+}
+
+#[cfg(target_os = "linux")]
+fn bundled_v4l2loopback_source(app: &AppHandle) -> Result<PathBuf, String> {
+    let resources = app
+        .path()
+        .resource_dir()
+        .map_err(|error| error.to_string())?;
+    let mut candidates = vec![resources.join("v4l2loopback")];
+
+    #[cfg(debug_assertions)]
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor/v4l2loopback"));
+
+    candidates
+        .into_iter()
+        .find(|path| path.join("install.sh").is_file() && path.join("v4l2loopback.c").is_file())
+        .ok_or_else(|| "The Camux multi-reader driver is not bundled with this build".to_owned())
 }
 
 #[cfg(target_os = "macos")]
@@ -495,6 +537,7 @@ mod tests {
         assert_eq!(value["appearance"], "system");
         assert_eq!(value["keepRunningWhenClosed"], true);
         assert_eq!(value["preferredQuality"], "automatic");
+        assert_eq!(value["preferredFrameRate"], serde_json::Value::Null);
         assert_eq!(value["disconnectBehavior"], "blackFrame");
         assert_eq!(value["hardwareAcceleration"], "automatic");
     }
