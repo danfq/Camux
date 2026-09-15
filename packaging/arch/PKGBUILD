@@ -17,5 +17,5 @@ package() {
   install -Dm644 "$srcdir/camux.desktop" "$pkgdir/usr/share/applications/camux.desktop"
   install -Dm644 "$srcdir/camux.png" "$pkgdir/usr/share/pixmaps/camux.png"
   install -d "$pkgdir/usr/lib/camux"
-  cp -a "$srcdir/v4l2loopback" "$pkgdir/usr/lib/camux/v4l2loopback"
+  cp -a --no-preserve=ownership "$srcdir/v4l2loopback" "$pkgdir/usr/lib/camux/v4l2loopback"
 }
