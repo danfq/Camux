@@ -211,15 +211,19 @@ jobs:
       - name: Install Arch build dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm bun git github-cli libappindicator librsvg patchelf v4l-utils webkit2gtk-4.1 xdg-utils
+          pacman -S --noconfirm bun git github-cli libappindicator librsvg patchelf rust v4l-utils webkit2gtk-4.1 xdg-utils
 
       - name: Install frontend dependencies
         working-directory: core/app
         run: bun install --frozen-lockfile
 
+      - name: Build frontend
+        working-directory: core/app
+        run: bun run build
+
       - name: Build application
         working-directory: core/backend
-        run: bun run ../app/node_modules/.bin/tauri build --bundles none
+        run: cargo build --release
 
       - name: Create pacman package
         env:
