@@ -4,7 +4,7 @@
     "resources": {
       "../../vendor/v4l2loopback": "v4l2loopback"
     },
-    "targets": ["deb", "rpm"],
+    "targets": ["deb", "rpm", "appimage"],
     "linux": {
       "deb": {
         "desktopTemplate": "../../assets/linux.desktop.hbs"

@@ -1,0 +1,21 @@
+pkgname=camux
+pkgver=${CAMUX_VERSION:?CAMUX_VERSION must be set}
+pkgrel=1
+pkgdesc="Use one webcam in more than one app at the same time"
+arch=('x86_64')
+url="https://github.com/danfq/Camux"
+license=('AGPL-3.0-or-later')
+depends=('gtk3' 'libappindicator' 'librsvg' 'polkit' 'v4l-utils' 'webkit2gtk-4.1')
+options=('!strip')
+
+prepare() {
+  cp -a "$startdir/artifacts/." "$srcdir/"
+}
+
+package() {
+  install -Dm755 "$srcdir/camux" "$pkgdir/usr/bin/camux"
+  install -Dm644 "$srcdir/camux.desktop" "$pkgdir/usr/share/applications/camux.desktop"
+  install -Dm644 "$srcdir/camux.png" "$pkgdir/usr/share/pixmaps/camux.png"
+  install -d "$pkgdir/usr/lib/camux"
+  cp -a "$srcdir/v4l2loopback" "$pkgdir/usr/lib/camux/v4l2loopback"
+}

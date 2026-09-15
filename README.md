@@ -19,8 +19,10 @@ that changed since the previous version.
 
 - **macOS:** download the `.dmg` file. It works on both Apple silicon and Intel
   Macs.
-- **Linux:** download the `.deb` file for Debian or Ubuntu, or the `.rpm` file
-  for Fedora and similar distributions.
+- **Linux:** download the `.deb` file for Debian or Ubuntu, the `.rpm` file
+  for Fedora and similar distributions, or the `.AppImage` file for a portable
+  install. On Arch and Arch-based distributions, download the `.pkg.tar.zst`
+  file and install it with `sudo pacman -U ./Camux-*.pkg.tar.zst`.
 - **Windows:** download the installer. The Windows version is an early preview,
   and camera support is still being developed.
 

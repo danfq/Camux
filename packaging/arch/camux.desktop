@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories=Utility;AudioVideo;
+Comment=Use one webcam in more than one app at the same time
+Exec=camux
+Icon=camux
+Name=Camux
+Terminal=false
+Type=Application

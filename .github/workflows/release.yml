@@ -144,7 +144,7 @@ jobs:
         include:
           - name: linux-x86_64
             os: ubuntu-22.04
-            args: ""
+            args: --bundles deb,rpm,appimage
             rust-targets: ""
           - name: windows-x86_64
             os: windows-latest
@@ -198,11 +198,59 @@ jobs:
           releaseAssetNamePattern: Camux-[version]-[platform]-[arch][setup][ext]
           args: ${{ matrix.args }}
 
+  build-arch-package:
+    name: Build Arch package
+    needs: bump
+    runs-on: ubuntu-22.04
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm bun git github-cli libappindicator librsvg patchelf v4l-utils webkit2gtk-4.1 xdg-utils
+
+      - name: Install frontend dependencies
+        working-directory: core/app
+        run: bun install --frozen-lockfile
+
+      - name: Build application
+        working-directory: core/backend
+        run: bun run ../app/node_modules/.bin/tauri build --bundles none
+
+      - name: Create pacman package
+        env:
+          VERSION: ${{ needs.bump.outputs.version }}
+        run: |
+          package_dir="$RUNNER_TEMP/camux-arch-package"
+          mkdir -p "$package_dir/artifacts"
+          cp packaging/arch/PKGBUILD "$package_dir/"
+          cp packaging/arch/camux.desktop "$package_dir/artifacts/"
+          cp assets/logo.png "$package_dir/artifacts/camux.png"
+          cp core/backend/target/release/camux "$package_dir/artifacts/"
+          cp -a vendor/v4l2loopback "$package_dir/artifacts/"
+          useradd --create-home builder
+          chown -R builder:builder "$package_dir"
+          su builder -c "cd '$package_dir' && CAMUX_VERSION='$VERSION' makepkg --cleanbuild --noconfirm"
+          mv "$package_dir/camux-$VERSION-1-x86_64.pkg.tar.zst" "$RUNNER_TEMP/Camux-$VERSION-linux-x86_64.pkg.tar.zst"
+
+      - name: Upload Arch package to draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: v${{ needs.bump.outputs.version }}
+          VERSION: ${{ needs.bump.outputs.version }}
+        run: gh release upload "$TAG" "$RUNNER_TEMP/Camux-$VERSION-linux-x86_64.pkg.tar.zst" --clobber
+
   publish:
     name: Publish release
     needs:
       - bump
       - build
+      - build-arch-package
     runs-on: ubuntu-22.04
     steps:
       - name: Publish completed release
