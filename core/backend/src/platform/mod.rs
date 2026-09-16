@@ -40,7 +40,7 @@ pub struct CameraDriver {
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub enum CameraPosition {
     Front,
     Back,
@@ -137,6 +137,13 @@ pub trait CameraBackend {
     fn devices(&self) -> Result<Vec<CameraDevice>, String>;
 
     fn availability(&self, device_ids: &[String]) -> Result<Vec<CameraAvailability>, String>;
+
+    fn terminate_camera_processes(&self, _device_id: &str) -> Result<Vec<u32>, String> {
+        Err(
+            "Terminating applications using a camera is not supported on this platform yet"
+                .to_owned(),
+        )
+    }
 
     fn set_control(
         &self,

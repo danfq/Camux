@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::OsStr;
 use std::fs;
+use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 
 use serde_json::json;
@@ -31,6 +32,11 @@ impl LinuxBackend {
     pub fn new() -> Self {
         Self
     }
+}
+
+struct DeviceProcess {
+    pid: u32,
+    name: String,
 }
 
 impl CameraBackend for LinuxBackend {
@@ -135,6 +141,39 @@ impl CameraBackend for LinuxBackend {
                 }
             })
             .collect())
+    }
+
+    fn terminate_camera_processes(&self, device_id: &str) -> Result<Vec<u32>, String> {
+        let device_path = validated_video_device_path(device_id)?;
+        let processes = device_processes(&device_path)?;
+        let mut signaled = Vec::with_capacity(processes.len());
+        let mut failures = Vec::new();
+
+        for process in processes {
+            match request_process_termination(process.pid) {
+                Ok(true) => signaled.push(process.pid),
+                // The process exited between discovering its descriptor and
+                // sending the signal, so it has already released the device.
+                Ok(false) => {}
+                Err(error) => {
+                    failures.push(format!("{} (PID {}): {error}", process.name, process.pid))
+                }
+            }
+        }
+
+        if failures.is_empty() {
+            Ok(signaled)
+        } else {
+            let signaled = if signaled.is_empty() {
+                String::new()
+            } else {
+                format!(" Successfully signaled PIDs: {signaled:?}.")
+            };
+            Err(format!(
+                "Could not terminate every process using {device_id}: {}.{signaled}",
+                failures.join("; ")
+            ))
+        }
     }
 
     fn set_control(
@@ -242,14 +281,29 @@ fn read_trimmed(path: impl AsRef<Path>) -> Option<String> {
 }
 
 fn device_users(device_path: &Path) -> Vec<String> {
-    let Ok(device_path) = fs::canonicalize(device_path) else {
+    let Ok(processes) = device_processes(device_path) else {
         return Vec::new();
     };
+
+    processes
+        .into_iter()
+        .map(|process| process.name)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn device_processes(device_path: &Path) -> Result<Vec<DeviceProcess>, String> {
+    let device_path = fs::canonicalize(device_path).map_err(|error| {
+        format!(
+            "Could not resolve camera device {}: {error}",
+            device_path.display()
+        )
+    })?;
     let own_pid = std::process::id();
-    let mut users = BTreeSet::new();
-    let Ok(processes) = fs::read_dir("/proc") else {
-        return Vec::new();
-    };
+    let mut users = Vec::new();
+    let processes =
+        fs::read_dir("/proc").map_err(|error| format!("Could not inspect processes: {error}"))?;
 
     for process in processes.filter_map(Result::ok) {
         let Some(pid) = process
@@ -273,11 +327,53 @@ fn device_users(device_path: &Path) -> Vec<String> {
                 .is_some_and(|target| target == device_path)
         });
         if owns_device {
-            users.insert(process_display_name(&process.path(), pid));
+            users.push(DeviceProcess {
+                pid,
+                name: process_display_name(&process.path(), pid),
+            });
         }
     }
 
-    users.into_iter().collect()
+    users.sort_by_key(|process| process.pid);
+    Ok(users)
+}
+
+fn validated_video_device_path(device_id: &str) -> Result<std::path::PathBuf, String> {
+    let path = Path::new(device_id);
+    let is_direct_video_device = path.parent() == Some(Path::new("/dev"))
+        && path.file_name().and_then(video_device_index).is_some();
+    if !is_direct_video_device {
+        return Err(format!("Invalid camera device ID: {device_id}"));
+    }
+
+    let path = fs::canonicalize(path)
+        .map_err(|error| format!("Could not resolve camera device {device_id}: {error}"))?;
+    let metadata = fs::metadata(&path)
+        .map_err(|error| format!("Could not inspect camera device {device_id}: {error}"))?;
+    if !metadata.file_type().is_char_device() {
+        return Err(format!(
+            "Camera device {device_id} is not a character device"
+        ));
+    }
+
+    Ok(path)
+}
+
+fn request_process_termination(pid: u32) -> Result<bool, String> {
+    let pid = i32::try_from(pid).map_err(|_| format!("PID {pid} is out of range"))?;
+
+    // SAFETY: kill only reads the integer PID and signal value. The PID came
+    // from /proc, and this backend is compiled only for Linux.
+    if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 {
+        return Ok(true);
+    }
+
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(false)
+    } else {
+        Err(error.to_string())
+    }
 }
 
 fn process_display_name(process_path: &Path, pid: u32) -> String {

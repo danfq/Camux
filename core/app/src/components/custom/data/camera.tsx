@@ -5,6 +5,7 @@ import {
   startCameraStream,
   stopCameraPreview,
   stopCameraRoute,
+  terminateCameraProcesses,
   type CameraControlValue,
   type CameraDevice,
   type CameraStreamInfo,
@@ -12,7 +13,7 @@ import {
 import { Camera, CameraOff, LoaderCircle, Minus, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
@@ -276,6 +277,7 @@ export const CameraItem = ({ device }: { device: CameraDevice }) => {
   const [controlPages, setControlPages] = useState<Record<string, number>>({});
   const [streamLoading, setStreamLoading] = useState(false);
   const [streamError, setStreamError] = useState<string>();
+  const [streamAttempt, setStreamAttempt] = useState(0);
   const updateTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const updateRevisions = useRef(new Map<number, number>());
   const confirmedControls = useRef(device.controls);
@@ -451,8 +453,8 @@ export const CameraItem = ({ device }: { device: CameraDevice }) => {
       if (sessionId !== undefined) void stopCameraPreview(sessionId);
     };
     // Availability polling replaces the descriptor object every two seconds;
-    // only the stable native ID identifies whether this is a different camera.
-  }, [detailsOpen, device.id, canvasMounted]);
+    // only the stable native ID and an explicit retry should restart capture.
+  }, [detailsOpen, device.id, canvasMounted, streamAttempt]);
 
   const useCamera = useCallback(async () => {
     if (routeLoading || (!routeActive && !streamInfo)) return;
@@ -475,6 +477,33 @@ export const CameraItem = ({ device }: { device: CameraDevice }) => {
       setRouteLoading(false);
     }
   }, [device.id, routeActive, routeLoading, streamInfo]);
+
+  const [cameraAccessOpen, setCameraAccessOpen] = useState(false);
+  const [terminateLoading, setTerminateLoading] = useState(false);
+  const [terminateError, setTerminateError] = useState<string>();
+  const [terminationNotice, setTerminationNotice] = useState<string>();
+  const retryStream = () => {
+    setCameraAccessOpen(false);
+    setTerminationNotice(undefined);
+    setStreamAttempt((attempt) => attempt + 1);
+  };
+  const handleTerminateCameraProcesses = async () => {
+    setTerminateLoading(true);
+    setTerminateError(undefined);
+    try {
+      const pids = await terminateCameraProcesses(device.id);
+      setCameraAccessOpen(false);
+      setTerminationNotice(
+        pids.length === 0
+          ? "No application is currently holding the camera. Try again."
+          : `Asked ${pids.length === 1 ? "the application" : `${pids.length} applications`} to terminate. Retry once ${pids.length === 1 ? "it has" : "they have"} closed.`,
+      );
+    } catch (error) {
+      setTerminateError(parseError(error));
+    } finally {
+      setTerminateLoading(false);
+    }
+  };
 
   // camera item
   return (
@@ -539,11 +568,57 @@ export const CameraItem = ({ device }: { device: CameraDevice }) => {
                 </div>
               )}
               {streamError && (
-                <div className="z-10 flex max-w-md flex-col items-center gap-2 px-6 text-center text-sm text-muted-foreground">
-                  <CameraOff className="size-6" aria-hidden="true" />
-                  <span>Unable to display the camera stream.</span>
-                  <small className="text-xs">{streamError}</small>
-                </div>
+                <>
+                  <div className="z-10 flex max-w-md flex-col items-center gap-2 px-6 text-center text-sm text-muted-foreground">
+                    <CameraOff className="size-6" aria-hidden="true" />
+                    <span>Unable to display the camera stream.</span>
+                    <small className="text-xs">{streamError}</small>
+                    {terminationNotice && <small className="text-xs">{terminationNotice}</small>}
+                    <div className="mt-2 flex flex-wrap justify-center gap-2">
+                      <Button onClick={retryStream}>Retry camera</Button>
+                      {device.inUse && (
+                        <Button variant="secondary" onClick={() => setCameraAccessOpen(true)}>
+                          View camera usage
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* camera access dialog */}
+                  <Dialog
+                    open={cameraAccessOpen}
+                    onOpenChange={(open) => {
+                      setCameraAccessOpen(open);
+                      if (open) setTerminateError(undefined);
+                    }}
+                  >
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{device.name} is in use</DialogTitle>
+                        <DialogDescription>Close the camera, call, or preview in the application below, then retry.</DialogDescription>
+                      </DialogHeader>
+                      <div className="rounded-xl border bg-muted/30 px-3 py-2.5 text-sm">
+                        <span className="text-muted-foreground">Using this camera: </span>
+                        <span className="font-semibold">{device.inUseBy.join(", ") || "Another application"}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        If the application cannot release the camera, Camux can send it a termination signal. The application will close and
+                        unsaved work may be lost.
+                      </div>
+                      {terminateError && <small className="text-destructive">{terminateError}</small>}
+                      <DialogFooter>
+                        <DialogClose asChild>
+                          <Button variant="secondary">Close</Button>
+                        </DialogClose>
+                        <Button onClick={retryStream}>Retry camera</Button>
+                        <Button variant="destructive" disabled={terminateLoading} onClick={() => void handleTerminateCameraProcesses()}>
+                          {terminateLoading && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+                          Terminate using apps
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
             </div>
           </div>

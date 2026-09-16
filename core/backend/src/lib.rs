@@ -176,6 +176,11 @@ fn stop_camera_preview(
 }
 
 #[tauri::command]
+fn terminate_camera_processes(device_id: String) -> Result<Vec<u32>, String> {
+    PlatformBackend::new().terminate_camera_processes(&device_id)
+}
+
+#[tauri::command]
 fn route_camera_to_virtual(
     session_id: u64,
     settings: tauri::State<'_, SettingsState>,
@@ -503,6 +508,7 @@ pub fn run() {
                 start_camera_stream,
                 next_camera_frame,
                 stop_camera_preview,
+                terminate_camera_processes,
                 route_camera_to_virtual,
                 stop_camera_route,
                 get_settings,

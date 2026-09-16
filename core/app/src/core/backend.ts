@@ -215,6 +215,13 @@ export function getCameraAvailability(deviceIds: string[]): Promise<CameraAvaila
   return invoke<CameraAvailability[]>("get_camera_availability", { deviceIds });
 }
 
+/** Send SIGTERM to each Linux process holding the camera and return the signaled PIDs. */
+export function terminateCameraProcesses(deviceId: string): Promise<number[]> {
+  if (!isTauri()) return Promise.reject(new Error("Terminating camera processes requires the native Camux backend."));
+
+  return invoke<number[]>("terminate_camera_processes", { deviceId });
+}
+
 /** Apply a camera control immediately and return the driver's refreshed control snapshot. */
 export async function setCameraControl(deviceId: string, controlId: number, value: CameraControlValue): Promise<CameraControl[]> {
   if (!isTauri()) throw new Error("Camera controls require the native Camux backend.");
