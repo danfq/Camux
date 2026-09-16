@@ -5,9 +5,8 @@ mod streaming;
 use platform::{CameraAvailability, CameraBackend, CameraDevice, PlatformBackend};
 use settings::{AppSettings, SettingsState, VirtualCameraStatus};
 #[cfg(target_os = "macos")]
-use std::sync::Mutex;
 use std::sync::{
-    Arc,
+    Mutex,
     atomic::{AtomicBool, Ordering},
 };
 use streaming::{CameraRouteStatus, CameraStreamInfo, CameraStreamState};
@@ -19,36 +18,6 @@ static RESTORED_WINDOW_FRAME: Mutex<Option<[f64; 4]>> = Mutex::new(None);
 
 #[cfg(target_os = "macos")]
 static WINDOW_FRAME_ANIMATION_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-#[cfg(target_os = "linux")]
-fn reveal_when_loaded(
-    window: &tauri::WebviewWindow,
-    content_loaded: Arc<AtomicBool>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use gtk::{glib::ControlFlow, prelude::*};
-    use std::time::Duration;
-
-    let gtk_window = window.gtk_window()?;
-    gtk::glib::timeout_add_local(Duration::from_millis(8), move || {
-        if content_loaded.load(Ordering::Acquire) {
-            gtk_window.show_all();
-            gtk_window.present();
-            ControlFlow::Break
-        } else {
-            ControlFlow::Continue
-        }
-    });
-
-    Ok(())
-}
-
-#[cfg(not(target_os = "linux"))]
-fn reveal_when_loaded(
-    _window: &tauri::WebviewWindow,
-    _content_loaded: Arc<AtomicBool>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    Ok(())
-}
 
 #[cfg(target_os = "linux")]
 fn configure_linux_webview(
@@ -262,17 +231,8 @@ fn open_logs(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = window;
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())
-    }
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "macos")]
@@ -461,18 +421,16 @@ pub fn run() {
                         std::io::Error::other("missing main window configuration")
                     })?;
 
-                let content_loaded = Arc::new(AtomicBool::new(false));
-                let load_signal = Arc::clone(&content_loaded);
                 let window = tauri::WebviewWindowBuilder::from_config(app, &window_config)?
-                    .on_page_load(move |_window, payload| {
+                    .on_page_load(move |window, payload| {
                         if payload.event() == PageLoadEvent::Finished {
-                            load_signal.store(true, Ordering::Release);
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
                     })
                     .build()?;
 
                 configure_linux_webview(&window)?;
-                reveal_when_loaded(&window, content_loaded)?;
                 configure_macos_webview(&window)?;
 
                 Ok(())
