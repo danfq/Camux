@@ -210,7 +210,7 @@ jobs:
           pacman -Syu --noconfirm
           export CAMUX_VERSION="$VERSION"
           source packaging/arch/PKGBUILD
-          pacman -S --needed --noconfirm "${depends[@]}" "${makedepends[@]}"
+          pacman -S --needed --noconfirm nodejs "${depends[@]}" "${makedepends[@]}"
 
       - name: Install frontend dependencies
         working-directory: core/app
