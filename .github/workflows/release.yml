@@ -211,7 +211,7 @@ jobs:
       - name: Install Arch build dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm bun git github-cli libappindicator librsvg patchelf rust v4l-utils webkit2gtk-4.1 xdg-utils
+          pacman -S --noconfirm bun clang git github-cli libappindicator librsvg patchelf rust v4l-utils webkit2gtk-4.1 xdg-utils
 
       - name: Install frontend dependencies
         working-directory: core/app
