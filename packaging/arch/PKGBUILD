@@ -5,7 +5,8 @@ pkgdesc="Use one webcam in more than one app at the same time"
 arch=('x86_64')
 url="https://github.com/danfq/Camux"
 license=('AGPL-3.0-or-later')
-depends=('gtk3' 'libappindicator' 'librsvg' 'polkit' 'v4l-utils' 'webkit2gtk-4.1')
+depends=('gtk3' 'libappindicator' 'librsvg' 'polkit' 'v4l-utils' 'webkit2gtk-4.1' 'xdg-utils')
+makedepends=('bun' 'clang' 'git' 'rust')
 options=('!strip')
 
 prepare() {

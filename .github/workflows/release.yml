@@ -17,7 +17,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       sha: ${{ steps.version.outputs.sha }}
-      release_id: ${{ steps.version.outputs.release_id }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,7 +62,7 @@ jobs:
             bump=patch
           fi
 
-          previous_tag=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
+          previous_tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null || true)
           if [[ -n "$previous_tag" ]]; then
             if ! git rev-parse --verify --quiet "refs/tags/$previous_tag" >/dev/null; then
               echo "Latest release tag $previous_tag is missing from the checkout" >&2
@@ -124,17 +123,16 @@ jobs:
           git tag -a "$tag" -m "Camux $version"
           git push --atomic origin "HEAD:refs/heads/$GITHUB_REF_NAME" "refs/tags/$tag"
 
-          gh release create "$tag" \
-            --verify-tag \
-            --draft \
-            --title "Camux $version" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"
-          release_id=$(gh release view "$tag" --json databaseId --jq '.databaseId')
-
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
           echo "Selected a $bump bump from: $commit_subject"
+
+      - name: Store release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
 
   build:
     needs: bump
@@ -152,7 +150,7 @@ jobs:
             rust-targets: ""
           - name: macos-universal
             os: macos-latest
-            args: --target universal-apple-darwin
+            args: --target universal-apple-darwin --bundles dmg
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
 
     name: Build ${{ matrix.name }}
@@ -186,16 +184,13 @@ jobs:
 
       - id: tauri
         uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: core/backend
           tauriScript: ../app/node_modules/.bin/tauri
-          releaseId: ${{ needs.bump.outputs.release_id }}
-          releaseDraft: true
           retryAttempts: 2
           uploadUpdaterJson: false
-          releaseAssetNamePattern: Camux-[version]-[platform]-[arch][setup][ext]
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: release-[platform]-[arch]-[bundle]
           args: ${{ matrix.args }}
 
   build-arch-package:
@@ -209,9 +204,13 @@ jobs:
           ref: ${{ needs.bump.outputs.sha }}
 
       - name: Install Arch build dependencies
+        env:
+          VERSION: ${{ needs.bump.outputs.version }}
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm bun clang git github-cli libappindicator librsvg patchelf rust v4l-utils webkit2gtk-4.1 xdg-utils
+          export CAMUX_VERSION="$VERSION"
+          source packaging/arch/PKGBUILD
+          pacman -S --needed --noconfirm "${depends[@]}" "${makedepends[@]}"
 
       - name: Install frontend dependencies
         working-directory: core/app
@@ -238,16 +237,16 @@ jobs:
           cp -a vendor/v4l2loopback "$package_dir/artifacts/"
           useradd --create-home builder
           chown -R builder:builder "$package_dir"
-          su builder -c "cd '$package_dir' && CAMUX_VERSION='$VERSION' makepkg --cleanbuild --noconfirm"
+          su builder -c "cd '$package_dir' && CAMUX_VERSION='$VERSION' makepkg --syncdeps --cleanbuild --noconfirm"
           mv "$package_dir/camux-$VERSION-1-x86_64.pkg.tar.zst" "$RUNNER_TEMP/Camux-$VERSION-linux-x86_64.pkg.tar.zst"
 
-      - name: Upload Arch package to draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: v${{ needs.bump.outputs.version }}
-          VERSION: ${{ needs.bump.outputs.version }}
-        run: gh release upload "$TAG" "$RUNNER_TEMP/Camux-$VERSION-linux-x86_64.pkg.tar.zst" --clobber
+      - name: Store Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64-arch
+          path: ${{ runner.temp }}/Camux-${{ needs.bump.outputs.version }}-linux-x86_64.pkg.tar.zst
+          if-no-files-found: error
+          compression-level: 0
 
   publish:
     name: Publish release
@@ -257,9 +256,58 @@ jobs:
       - build-arch-package
     runs-on: ubuntu-22.04
     steps:
-      - name: Publish completed release
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: ${{ runner.temp }}/release-assets
+          merge-multiple: true
+
+      - name: Create published release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: v${{ needs.bump.outputs.version }}
-        run: gh release edit "$TAG" --draft=false
+          TITLE: Camux ${{ needs.bump.outputs.version }}
+          VERSION: ${{ needs.bump.outputs.version }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+          ASSET_DIR: ${{ runner.temp }}/release-assets
+        run: |
+          shopt -s nullglob
+          assets=("$ASSET_DIR"/*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release assets were downloaded" >&2
+            exit 1
+          fi
+
+          for asset in "${assets[@]}"; do
+            case "$asset" in
+              *.AppImage) target="Camux-$VERSION-linux-x86_64.AppImage" ;;
+              *.deb) target="Camux-$VERSION-linux-x86_64.deb" ;;
+              *.rpm) target="Camux-$VERSION-linux-x86_64.rpm" ;;
+              *.dmg) target="Camux-$VERSION-macos-universal.dmg" ;;
+              *.msi) target="Camux-$VERSION-windows-x86_64.msi" ;;
+              *.exe) target="Camux-$VERSION-windows-x86_64-setup.exe" ;;
+              *.pkg.tar.zst) continue ;;
+              *)
+                echo "Unexpected release asset: $asset" >&2
+                exit 1
+                ;;
+            esac
+            if [[ "$asset" != "$ASSET_DIR/$target" ]]; then
+              mv "$asset" "$ASSET_DIR/$target"
+            fi
+          done
+
+          assets=("$ASSET_DIR"/*)
+          gh release create "$TAG" "${assets[@]}" \
+            --verify-tag \
+            --title "$TITLE" \
+            --notes-file "$NOTES_FILE"
