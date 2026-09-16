@@ -10,8 +10,16 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use streaming::{CameraRouteStatus, CameraStreamInfo, CameraStreamState};
-use tauri::Manager;
 use tauri::webview::PageLoadEvent;
+use tauri::{
+    Manager,
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+};
+
+const MAIN_WINDOW_LABEL: &str = "main";
+const TRAY_OPEN_ID: &str = "open";
+const TRAY_QUIT_ID: &str = "quit";
 
 #[cfg(target_os = "macos")]
 static RESTORED_WINDOW_FRAME: Mutex<Option<[f64; 4]>> = Mutex::new(None);
@@ -231,8 +239,55 @@ fn open_logs(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    reveal_window(&window)
+}
+
+fn reveal_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())
+}
+
+fn reveal_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = reveal_window(&window);
+    }
+}
+
+fn create_tray(app: &tauri::App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, TRAY_OPEN_ID, "Open Camux", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit Camux", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &separator, &quit])?;
+
+    let mut tray = TrayIconBuilder::with_id("main")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .tooltip("Camux")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_OPEN_ID => reveal_main_window(app),
+            TRAY_QUIT_ID => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                reveal_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+
+    tray.build(app)?;
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -410,6 +465,11 @@ fn toggle_maximize_realtime(window: tauri::WebviewWindow) -> Result<(), String> 
 pub fn run() {
     let app =
         tauri::Builder::default()
+            // Keep this plugin first so another process hands activation to the
+            // existing instance before any other plugin handles its arguments.
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                reveal_main_window(app);
+            }))
             .plugin(tauri_plugin_os::init())
             .setup(|app| {
                 let settings = SettingsState::load(app.handle()).map_err(std::io::Error::other)?;
@@ -432,6 +492,7 @@ pub fn run() {
 
                 configure_linux_webview(&window)?;
                 configure_macos_webview(&window)?;
+                create_tray(app)?;
 
                 Ok(())
             })
@@ -483,11 +544,8 @@ pub fn run() {
         }
 
         #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Reopen { .. } = event
-            && let Some(window) = app_handle.get_webview_window("main")
-        {
-            let _ = window.show();
-            let _ = window.set_focus();
+        if let tauri::RunEvent::Reopen { .. } = event {
+            reveal_main_window(app_handle);
         }
     });
 }
