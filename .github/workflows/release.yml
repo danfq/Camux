@@ -265,7 +265,7 @@ jobs:
       - name: Download release assets
         uses: actions/download-artifact@v4
         with:
-          pattern: release-*
+          pattern: release-*-*-*
           path: ${{ runner.temp }}/release-assets
           merge-multiple: true
 
