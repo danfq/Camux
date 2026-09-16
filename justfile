@@ -10,6 +10,13 @@ run *args:
     sh ../../scripts/install-dev-icon.sh
     ../app/node_modules/.bin/tauri dev -- {{ args }}
 
+# Run the desktop app in production/release mode.
+[working-directory("core/backend")]
+run-prod *args:
+    sh ../../scripts/install-dev-icon.sh
+    ../app/node_modules/.bin/tauri build --no-bundle
+    ./target/release/camux {{ args }}
+
 # Remove the Linux desktop entry used for development window icons.
 remove-dev-icon:
     sh scripts/install-dev-icon.sh --remove

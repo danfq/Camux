@@ -216,13 +216,9 @@ jobs:
         working-directory: core/app
         run: bun install --frozen-lockfile
 
-      - name: Build frontend
-        working-directory: core/app
-        run: bun run build
-
       - name: Build application
         working-directory: core/backend
-        run: cargo build --release
+        run: ../app/node_modules/.bin/tauri build --no-bundle
 
       - name: Create pacman package
         env:
